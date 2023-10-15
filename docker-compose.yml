@@ -1,0 +1,20 @@
+version: '3'
+services:
+  private_api:
+    container_name: highscore_worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        root_path: /
+        api_port: 5000
+    # command: bash -c "apt update && apt install -y curl && sleep infinity"
+    command: python src/main.py
+    networks:
+      - botdetector-network
+    volumes:
+      - ./src:/project/src
+
+networks:
+  botdetector-network:
