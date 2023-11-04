@@ -1,9 +1,9 @@
 import asyncio
 import json
+import logging
 from asyncio import Queue
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-
 from config import settings
 
 
@@ -50,6 +50,7 @@ async def process_data(receive_queue: Queue):
             await asyncio.sleep(1)
             continue
         message = await receive_queue.get()
+        print(message)
         # TODO insert message into database
         receive_queue.task_done()
 
@@ -71,5 +72,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # TODO: async run
-    main()
+    asyncio.run(main())

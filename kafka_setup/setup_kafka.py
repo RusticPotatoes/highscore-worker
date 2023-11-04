@@ -3,6 +3,7 @@ import json
 import os
 import time
 import zipfile
+from queue import Queue
 
 from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
@@ -48,47 +49,82 @@ def create_topics():
     return
 
 
-def send_json_to_kafka(file_path, producer, topic):
-    with open(file_path) as file:
-        data = json.load(file)
+def extract_zip(extract_to: str):
+    current_dir = os.getcwd()  # Get the current working directory
 
-    for record in data:
-        # record = json.dumps(record).encode("utf-8")
-        producer.send(topic, value=record)
+    # Find zip file in the current directory
+    zip_files = [file for file in os.listdir(current_dir) if file.endswith(".zip")]
+
+    if not zip_files:
+        print("No zip file found in the current directory")
+        return
+
+    # Select the first zip file found
+    for zip_file in zip_files:
+        print(f"extracting: {zip_file}")
+        zip_file_path = os.path.join(current_dir, zip_file)
+        # Create the extraction directory if it doesn't exist
+        if not os.path.exists(extract_to):
+            os.makedirs(extract_to)
+
+        # Extract zipfile
+        with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
+            zip_ref.extractall(extract_to)
     return
 
 
-def insert_data():
-    # Get the Kafka broker address from the environment variable
+def get_messages_from_json(path: str, send_queue: Queue):
+    paths = []
+    for file_name in os.listdir(path):
+        print(f"{file_name=}")
+        file_path = os.path.join(path, file_name)
+        paths.append(file_path)
+
+    for _path in paths:
+        print(f"{_path=}")
+        with open(_path) as file:
+            data = json.load(file)
+            print(f"{_path}:{len(data)}")
+            _ = [send_queue.put(item=d) for d in data]
+    return
+
+
+def kafka_producer():
     kafka_broker = os.environ.get("KAFKA_BROKER", "localhost:9094")
-
-    zip_file_path = "kafka_data/kafka_data.zip"
-    extracted_folder = "kafka_data"
-
-    print("Extracting data from the zip archive...")
-    # Extract the files from the zip archive
-    with zipfile.ZipFile(zip_file_path, "r") as zip_ref:
-        zip_ref.extractall(extracted_folder)
-
-    # Create the Kafka producer
     producer = KafkaProducer(
         bootstrap_servers=kafka_broker,
         value_serializer=lambda x: json.dumps(x).encode(),
     )
-
-    for file_name in os.listdir(extracted_folder):
-        if file_name.endswith(".json"):
-            file_path = os.path.join(extracted_folder, file_name)
-            print(f"Processing file: {file_path}")
-            send_json_to_kafka(file_path, producer, "player")
-
-    print("Data insertion completed.")
+    return producer
 
 
-def setup_kafka():
+def send_messages(producer: KafkaProducer, send_queue: Queue):
+    print(f"{send_queue.qsize()=}")
+    while send_queue.not_empty:
+        message = send_queue.get()
+        print(message)
+        producer.send(message)
+        send_queue.task_done()
+
+
+def insert_data():
+    send_queue = Queue()
+    extract_to = "kafka_data"
+    producer = kafka_producer()
+
+    print("extract_zip")
+    extract_zip(extract_to)
+    print("get_messages_from_json")
+    get_messages_from_json(extract_to, send_queue=send_queue)
+    print("send_messages")
+    send_messages(producer=producer, send_queue=send_queue)
+
+
+def main():
+    print("create_topics")
     create_topics()
+    print("insert_data")
     insert_data()
 
 
-if __name__ == "__main__":
-    setup_kafka()
+main()
