@@ -50,7 +50,7 @@ def create_topics():
 
 
 def extract_zip(extract_to: str):
-    current_dir = os.getcwd()  # Get the current working directory
+    current_dir = "./kafka_data"  # Get the current working directory
 
     # Find zip file in the current directory
     zip_files = [file for file in os.listdir(current_dir) if file.endswith(".zip")]
@@ -77,8 +77,9 @@ def get_messages_from_json(path: str, send_queue: Queue):
     paths = []
     for file_name in os.listdir(path):
         print(f"{file_name=}")
-        file_path = os.path.join(path, file_name)
-        paths.append(file_path)
+        if file_name.endswith(".json"):
+            file_path = os.path.join(path, file_name)
+            paths.append(file_path)
 
     for _path in paths:
         print(f"{_path=}")
@@ -98,12 +99,15 @@ def kafka_producer():
     return producer
 
 
-def send_messages(producer: KafkaProducer, send_queue: Queue):
-    print(f"{send_queue.qsize()=}")
-    while send_queue.not_empty:
+def send_messages(producer: KafkaProducer, send_queue: Queue, topic: str = "scraper"):
+    while True:
+        if send_queue.empty():
+            break
+
+        if send_queue.qsize() % 100 == 0:
+            print(f"{send_queue.qsize()=}")
         message = send_queue.get()
-        print(message)
-        producer.send(message)
+        producer.send(topic=topic, value=message)
         send_queue.task_done()
 
 
@@ -125,6 +129,7 @@ def main():
     create_topics()
     print("insert_data")
     insert_data()
+    print("done")
 
 
 main()
