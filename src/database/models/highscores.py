@@ -1,15 +1,6 @@
-from sqlalchemy import (
-    BigInteger,
-    Column,
-    Date,
-    DateTime,
-    ForeignKeyConstraint,
-    Integer,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import BigInteger, Column, Date, DateTime, Integer, func
 
-from src.database.database import Base
+from database.database import Base
 
 
 class PlayerHiscoreData(Base):
@@ -114,18 +105,3 @@ class PlayerHiscoreData(Base):
     the_leviathan = Column(Integer, default=0)
     the_whisperer = Column(Integer, default=0)
     vardorvis = Column(Integer, default=0)
-
-    # Constraints for unique keys and foreign key
-    __table_args__ = (
-        UniqueConstraint(
-            "Player_id", "timestamp", name="idx_playerHiscoreData_Player_id_timestamp"
-        ),
-        UniqueConstraint("Player_id", "ts_date", name="Unique_player_date"),
-        ForeignKeyConstraint(
-            ["Player_id"],
-            ["Players.id"],
-            name="FK_Players_id",
-            ondelete="RESTRICT",
-            onupdate="RESTRICT",
-        ),
-    )

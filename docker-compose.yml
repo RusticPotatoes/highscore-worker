@@ -40,6 +40,7 @@ services:
 
   kafka_setup:
     container_name: kafka_setup
+    image: bot-detector/kafka_setup
     build:
       context: ./kafka_setup
     command: ["python", "setup_kafka.py"]
@@ -73,7 +74,8 @@ services:
       timeout: 5s
 
   worker:
-    container_name: highscore_worker
+    container_name: worker
+    image: bot-detector/highscore_worker
     build:
       context: .
       dockerfile: Dockerfile
@@ -82,7 +84,7 @@ services:
         root_path: /
         api_port: 5000
     # command: bash -c "apt update && apt install -y curl && sleep infinity"
-    command: python src/core/main.py
+    command: python src/main.py
     environment:
       - KAFKA_HOST=kafka:9092
       - DATABASE_URL=mysql+aiomysql://root:root_bot_buster@mysql:3306/playerdata

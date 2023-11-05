@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from src.core.config import settings
+from core.config import settings
 
 # Create an async SQLAlchemy engine
 engine = create_async_engine(
@@ -12,6 +12,7 @@ engine = create_async_engine(
     pool_recycle=settings.POOL_RECYCLE,
     echo=(settings.ENV != "PRD"),
 )
+
 # Create a session factory
 SessionFactory = sessionmaker(
     bind=engine,
@@ -20,9 +21,11 @@ SessionFactory = sessionmaker(
 )
 
 
+# async def get_session() -> AsyncSession:
+#     async with SessionFactory() as session:
+#         yield session
 async def get_session() -> AsyncSession:
-    async with SessionFactory() as session:
-        yield session
+    return SessionFactory()
 
 
 Base = declarative_base()

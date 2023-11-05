@@ -123,3 +123,4 @@ CREATE TABLE `playerHiscoreData` (
   UNIQUE KEY `Unique_player_date` (`Player_id`,`ts_date`),
   CONSTRAINT `FK_Players_id` FOREIGN KEY (`Player_id`) REFERENCES `Players` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
+CREATE TRIGGER `hiscore_date_OnInsert` BEFORE INSERT ON `playerHiscoreData` FOR EACH ROW SET new.ts_date = DATE(new.timestamp);
