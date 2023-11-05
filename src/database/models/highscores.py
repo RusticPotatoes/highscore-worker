@@ -3,6 +3,7 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
+    ForeignKeyConstraint,
     Integer,
     UniqueConstraint,
     func,
