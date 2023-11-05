@@ -19,4 +19,10 @@ SessionFactory = sessionmaker(
     class_=AsyncSession,  # Use AsyncSession for asynchronous operations
 )
 
+
+async def get_session() -> AsyncSession:
+    async with SessionFactory() as session:
+        yield session
+
+
 Base = declarative_base()

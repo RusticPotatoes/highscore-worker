@@ -5,6 +5,16 @@ from asyncio import Queue
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from config import settings
+from sqlalchemy import func, insert, select, update
+from sqlalchemy.engine import Result
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
+from sqlalchemy.sql.expression import Insert, Select, Update
+
+from src.database.database import get_session
+from src.database.models.highscores import PlayerHiscoreData
+
+logger = logging.getLogger(__name__)
 
 
 async def kafka_consumer(topic: str, group: str):
@@ -44,14 +54,39 @@ async def send_messages(topic: str, producer: AIOKafkaProducer, send_queue: Queu
         send_queue.task_done()
 
 
+# TODO: pydantic data
+async def insert_highscore(session: AsyncSession, data):
+    table = PlayerHiscoreData
+    # check if exists first
+    select_query: Select = select(table=table)
+    # select_query.where(table.ts_date == )
+    query: Insert = insert(table=table)
+    await session.execute(query)
+    pass
+
+
+# TODO: pydantic data
+async def update_player(session: AsyncSession, data):
+    table = ""
+    query: Insert = insert(table=table)
+    await session.execute(query)
+
+
 async def process_data(receive_queue: Queue):
     while True:
         if receive_queue.empty():
             await asyncio.sleep(1)
             continue
-        message = await receive_queue.get()
-        print(message)
-        # TODO insert message into database
+
+        message: dict = await receive_queue.get()
+        highscore = message.get("hiscore")
+        player = message.get("player")
+
+        async with get_session() as session:
+            session: AsyncSession
+            await insert_highscore(session=session, data=highscore)
+            await update_player(session=session, data=player)
+
         receive_queue.task_done()
 
 

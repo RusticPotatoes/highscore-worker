@@ -7,9 +7,8 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.ext.declarative import declarative_base
 
-Base = declarative_base()
+from src.database.database import Base
 
 
 class PlayerHiscoreData(Base):
