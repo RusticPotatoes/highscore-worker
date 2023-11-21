@@ -99,10 +99,6 @@ services:
         condition: service_healthy
       mysql:
         condition: service_healthy
-      kafka_setup:
-        condition: service_completed_successfully
-
-
 
 networks:
   botdetector-network:
