@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import time
+import traceback
 from asyncio import Queue
 from datetime import datetime
 
@@ -78,7 +79,7 @@ async def insert_highscore(session: AsyncSession, data: dict):
     if not existing_record:
         data = playerHiscoreDataSchema(**data)
         data = data.model_dump(mode="json")
-        insert_query: Insert = insert(table).values(data)
+        insert_query: Insert = insert(table).values(data).prefix_with("ignore")
         await session.execute(insert_query)
 
 
@@ -119,15 +120,19 @@ async def process_data(receive_queue: Queue):
             player_id = player.get("id")
             if player_id == 0 or player_id > 300:
                 continue
-
-        session: AsyncSession = await get_session()
-        async with session.begin():
-            if highscore:
-                await insert_highscore(session=session, data=highscore)
-            await update_player(session=session, data=player)
-            await session.commit()
-
-        receive_queue.task_done()
+        try:
+            session: AsyncSession = await get_session()
+            async with session.begin():
+                if highscore:
+                    await insert_highscore(session=session, data=highscore)
+                await update_player(session=session, data=player)
+                await session.commit()
+        except Exception as e:
+            logger.error({"error": e})
+            logger.debug(f"Traceback: \n{traceback.format_exc()}")
+            await receive_queue.put(message)
+            receive_queue.task_done()
+            continue
 
         if counter % 100 == 0 and counter > 0:
             end_time = time.time()
