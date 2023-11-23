@@ -26,6 +26,7 @@ file_handler.setFormatter(formatter)
 stream_handler.setFormatter(formatter)
 
 handlers = [file_handler if settings.ENV != "PRD" else None, stream_handler]
+handlers = [h for h in handlers if h is not None]
 
 logging.basicConfig(level=logging.DEBUG, handlers=handlers)
 
