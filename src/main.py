@@ -163,11 +163,11 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             _receive_queue.task_done()
 
         except Exception as e:
+            await error_queue.put(message)
             # Handle exceptions, log the error, and put the message in the error queue
             logger.error({"error": e})
             logger.debug(f"Traceback: \n{traceback.format_exc()}")
-            await error_queue.put(message)
-            logger.info(f"error_qsize={error_queue.qsize()}")
+            logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
             # Mark the message as processed in the queue and continue to the next iteration
             _receive_queue.task_done()
             continue
