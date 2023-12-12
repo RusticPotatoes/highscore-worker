@@ -8,6 +8,7 @@ from datetime import datetime
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from sqlalchemy import insert, select, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Insert, Select, Update
 
@@ -159,7 +160,14 @@ async def process_data(receive_queue: Queue, error_queue: Queue, type: str):
                 await session.commit()
             # Mark the message as processed in the queue
             receive_queue.task_done()
-
+        except OperationalError as e:
+            await error_queue.put(message)
+            # Handle exceptions, log the error, and put the message in the error queue
+            logger.error({"error": e})
+            logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+            # Mark the message as processed in the queue and continue to the next iteration
+            receive_queue.task_done()
+            continue
         except Exception as e:
             await error_queue.put(message)
             # Handle exceptions, log the error, and put the message in the error queue
