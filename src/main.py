@@ -209,8 +209,15 @@ async def main():
             receive_queue=error_queue, error_queue=error_queue, type="error_queue"
         )
     )
-    await process_data(
-        receive_queue=receive_queue, error_queue=error_queue, type="receive_queue"
+    await asyncio.gather(
+        *[
+            process_data(
+                receive_queue=receive_queue,
+                error_queue=error_queue,
+                type="receive_queue",
+            )
+            for _ in range(5)
+        ]
     )
 
 
