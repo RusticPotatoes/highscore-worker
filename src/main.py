@@ -112,18 +112,18 @@ def log_speed(
 
 
 # Define a function to process data from a queue
-async def process_data(receive_queue: Queue, error_queue: Queue):
+async def process_data(receive_queue: Queue, error_queue: Queue, type: str):
     # Initialize counter and start time
     counter = 0
     start_time = time.time()
-    was_error = False
 
     # Run indefinitely
     while True:
         # Check if both queues are empty
-        if receive_queue.empty() and error_queue.empty():
+        if receive_queue.empty():
             # If there were previous iterations with data, log processing speed
             if counter > 0:
+                logger.info(f"{type=}")
                 start_time, counter = log_speed(
                     counter=counter, start_time=start_time, receive_queue=receive_queue
                 )
@@ -131,13 +131,8 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             await asyncio.sleep(1)
             continue
 
-        # Choose the queue to process based on whether the error queue is empty
-        _receive_queue = (
-            receive_queue if error_queue.empty() or was_error else error_queue
-        )
-
         # Get a message from the chosen queue
-        message: dict = await _receive_queue.get()
+        message: dict = await receive_queue.get()
 
         # Extract 'hiscores' and 'player' dictionaries from the message
         highscore: dict = message.get("hiscores")
@@ -163,22 +158,17 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
                 # Commit the changes to the database
                 await session.commit()
             # Mark the message as processed in the queue
-            _receive_queue.task_done()
+            receive_queue.task_done()
 
         except Exception as e:
             await error_queue.put(message)
-            # was error default false => will convert to True
-            # if previous run was an error than this will flip to False, taking the first error statement
-            was_error = not was_error
             # Handle exceptions, log the error, and put the message in the error queue
             logger.error({"error": e})
             logger.debug(f"Traceback: \n{traceback.format_exc()}")
             logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
             # Mark the message as processed in the queue and continue to the next iteration
-            _receive_queue.task_done()
+            receive_queue.task_done()
             continue
-
-        was_error = False
 
         # Log processing speed every 100 iterations
         if counter % 100 == 0 and counter > 0:
@@ -206,7 +196,14 @@ async def main():
     asyncio.create_task(
         send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
-    await asyncio.gather(*[process_data(receive_queue, error_queue) for _ in range(2)])
+    asyncio.create_task(
+        process_data(
+            receive_queue=error_queue, error_queue=error_queue, type="error_queue"
+        )
+    )
+    await process_data(
+        receive_queue=receive_queue, error_queue=error_queue, type="receive_queue"
+    )
 
 
 if __name__ == "__main__":
