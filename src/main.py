@@ -204,7 +204,7 @@ async def main():
         send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
     asyncio.create_task(
-        process_data(receive_queue=receive_queue, error_queue=receive_queue)
+        process_data(receive_queue=receive_queue, error_queue=send_queue)
     )
 
     while True:
