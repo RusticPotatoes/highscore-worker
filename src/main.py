@@ -150,7 +150,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
         try:
             # Acquire an asynchronous database session
             session: AsyncSession = await get_session()
-            async with session.begin():
+            async with session.begin(timeout=5):
                 # If 'highscore' dictionary is present, insert it into the database
                 if highscore:
                     await insert_highscore(session=session, data=highscore)
