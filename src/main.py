@@ -38,6 +38,7 @@ async def kafka_producer():
     producer = AIOKafkaProducer(
         bootstrap_servers=[settings.KAFKA_HOST],
         value_serializer=lambda v: json.dumps(v).encode(),
+        acks="all",
     )
     await producer.start()
     return producer
@@ -113,7 +114,7 @@ def log_speed(
 
 
 # Define a function to process data from a queue
-async def process_data(receive_queue: Queue, error_queue: Queue, type: str):
+async def process_data(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
     counter = 0
     start_time = time.time()
@@ -124,7 +125,6 @@ async def process_data(receive_queue: Queue, error_queue: Queue, type: str):
         if receive_queue.empty():
             # If there were previous iterations with data, log processing speed
             if counter > 0:
-                logger.info(f"{type=}")
                 start_time, counter = log_speed(
                     counter=counter, start_time=start_time, receive_queue=receive_queue
                 )
@@ -194,31 +194,21 @@ async def main():
 
     receive_queue = Queue(maxsize=100)
     send_queue = Queue(maxsize=100)
-    error_queue = Queue()
 
     asyncio.create_task(
         receive_messages(
-            consumer=consumer, receive_queue=receive_queue, error_queue=error_queue
+            consumer=consumer, receive_queue=receive_queue, error_queue=send_queue
         )
     )
     asyncio.create_task(
         send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
     asyncio.create_task(
-        process_data(
-            receive_queue=error_queue, error_queue=error_queue, type="error_queue"
-        )
+        process_data(receive_queue=receive_queue, error_queue=receive_queue)
     )
-    await asyncio.gather(
-        *[
-            process_data(
-                receive_queue=receive_queue,
-                error_queue=error_queue,
-                type="receive_queue",
-            )
-            for _ in range(5)
-        ]
-    )
+
+    while True:
+        await asyncio.sleep(60)
 
 
 if __name__ == "__main__":
