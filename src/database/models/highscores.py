@@ -6,7 +6,7 @@ from database.database import Base
 class PlayerHiscoreData(Base):
     __tablename__ = "playerHiscoreData"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, server_default=func.now())
     ts_date = Column(Date, nullable=True)
     Player_id = Column(Integer, nullable=False)
