@@ -9,7 +9,7 @@ class playerHiscoreData(BaseModel):
 
     # id: Optional[int] = None
     timestamp: datetime = datetime.utcnow()
-    ts_date: Optional[date] = None
+    # ts_date: Optional[date] = None
     Player_id: int
     total: int
     attack: int
