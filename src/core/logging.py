@@ -32,6 +32,7 @@ logging.basicConfig(level=logging.DEBUG, handlers=handlers)
 
 # set imported loggers to warning
 logging.getLogger("aiomysql").setLevel(logging.ERROR)
+logging.getLogger("asyncmy").setLevel(logging.ERROR)
 logging.getLogger("aiokafka").setLevel(logging.WARNING)
 
 # # https://github.com/aio-libs/aiomysql/issues/103
