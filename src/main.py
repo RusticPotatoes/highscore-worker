@@ -137,6 +137,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             start_time=start_time,
             _queue=receive_queue,
             topic="scraper",
+            interval=15
         )
 
         # Check if queue is empty
@@ -161,7 +162,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
         now = time.time()
 
-        if len(batch) > 100 or now-start_time > 5:
+        if len(batch) > 100 or now-start_time > 15:
             await insert_data(batch=batch, error_queue=error_queue)
             batch = []
         
