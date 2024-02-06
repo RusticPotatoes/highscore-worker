@@ -1,7 +1,6 @@
 import json
 import logging
 import sys
-import warnings
 
 from core.config import settings
 

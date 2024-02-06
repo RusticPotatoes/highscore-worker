@@ -4,20 +4,17 @@ import logging
 import time
 import traceback
 from asyncio import Queue
-from datetime import datetime
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from sqlalchemy import insert, select, update
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.expression import Insert, Select, Update
-
-import core.logging  # for log formatting
 from app.schemas.highscores import playerHiscoreData as playerHiscoreDataSchema
 from core.config import settings
 from database.database import get_session
 from database.models.highscores import PlayerHiscoreData
 from database.models.player import Player
+from sqlalchemy import insert, update
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.expression import Insert, Update
 
 logger = logging.getLogger(__name__)
 
@@ -64,43 +61,6 @@ async def send_messages(topic: str, producer: AIOKafkaProducer, send_queue: Queu
         await producer.send(topic, value=message)
         send_queue.task_done()
 
-
-# TODO: pydantic data
-async def insert_highscore(session: AsyncSession, data: dict):
-    player_id = data.get("Player_id")
-    timestamp = data.get("timestamp")
-
-    # Convert the timestamp to a date format
-    ts_date = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S").date()
-
-    table = PlayerHiscoreData
-
-    select_query: Select = select(table).where(
-        (table.Player_id == player_id) & (table.ts_date == ts_date)
-    )
-
-    # Check if the record exists
-    existing_record = await session.execute(select_query)
-    existing_record = existing_record.scalars().first()
-
-    if not existing_record:
-        data = playerHiscoreDataSchema(**data)
-        data = data.model_dump(mode="json")
-        insert_query: Insert = insert(table).values(data).prefix_with("ignore")
-        await session.execute(insert_query)
-
-
-# TODO: pydantic data
-async def update_player(session: AsyncSession, data: dict):
-    player_id = data.get("id")
-
-    table = Player
-    query: Update = update(table=table)
-    query = query.where(Player.id == player_id)
-    query = query.values(data)
-    await session.execute(query)
-
-
 def log_speed(
     counter: int, start_time: float, _queue: Queue, topic: str, interval: int = 15
 ) -> tuple[float, int]:
@@ -125,13 +85,51 @@ def log_speed(
     # Return the current time and reset the counter to zero
     return time.time(), 0
 
+async def insert_data(batch: list[dict], error_queue:Queue):
+    try:
+        highscores:list[dict] = [msg.get("hiscores") for msg in batch]
+        players:list[dict] = [msg.get("player") for msg in batch]
 
-# Define a function to process data from a queue
+        highscores = [playerHiscoreDataSchema(**hs) for hs in highscores if hs]
+        highscores = [hs.model_dump(mode="json") for hs in highscores ]
+
+        session: AsyncSession = await get_session()
+        
+        logger.info(f"Received: {len(players)=}, {len(highscores)=}")
+        
+        # start a transaction
+        async with session.begin():
+            # insert into table values ()
+            insert_sql:Insert = insert(PlayerHiscoreData)
+            insert_sql = insert_sql.values(highscores)
+            insert_sql = insert_sql.prefix_with("ignore")
+            await session.execute(insert_sql)
+            # update table
+            for player in players:
+                update_sql:Update = update(Player)
+                update_sql = update_sql.where(Player.id == player.get("id"))
+                update_sql = update_sql.values(player)
+                await session.execute(update_sql)
+    except OperationalError as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+    except Exception as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.debug(f"Traceback: \n{traceback.format_exc()}")
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+
 async def process_data(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
     counter = 0
     start_time = time.time()
 
+    batch = []
     # Run indefinitely
     while True:
         start_time, counter = log_speed(
@@ -148,53 +146,26 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
         # Get a message from the chosen queue
         message: dict = await receive_queue.get()
-
-        # Extract 'hiscores' and 'player' dictionaries from the message
-        highscore: dict = message.get("hiscores")
-        player: dict = message.get("player")
-
-        # Check the environment and filter out certain player IDs if not in production
+        
+        #TODO fix test data
         if settings.ENV != "PRD":
+            player = message.get("player")
             player_id = player.get("id")
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
             if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):
                 continue
+        
+        # batch message
+        batch.append(message)
 
-        try:
-            # Acquire an asynchronous database session
-            session: AsyncSession = await get_session()
-            async with session.begin():
-                # If 'highscore' dictionary is present, insert it into the database
-                if highscore:
-                    await insert_highscore(session=session, data=highscore)
-                # Update the player information in the database
-                await update_player(session=session, data=player)
-                # Commit the changes to the database
-                await session.commit()
-            # Mark the message as processed in the queue
-            receive_queue.task_done()
-        except OperationalError as e:
-            await error_queue.put(message)
-            # Handle exceptions, log the error, and put the message in the error queue
-            logger.error({"error": e})
-            logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
-            # Mark the message as processed in the queue and continue to the next iteration
-            receive_queue.task_done()
-            continue
-        except Exception as e:
-            await error_queue.put(message)
-            # Handle exceptions, log the error, and put the message in the error queue
-            logger.error({"error": e})
-            logger.debug(f"Traceback: \n{traceback.format_exc()}")
-            logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
-            # Mark the message as processed in the queue and continue to the next iteration
-            receive_queue.task_done()
-            continue
+        now = time.time()
 
-        # Increment the counter
+        if len(batch) > 100 or now-start_time > 5:
+            await insert_data(batch=batch, error_queue=error_queue)
+        
+        receive_queue.task_done()
         counter += 1
-
 
 async def main():
     # get kafka engine
