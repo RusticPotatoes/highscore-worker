@@ -163,6 +163,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
         if len(batch) > 100 or now-start_time > 5:
             await insert_data(batch=batch, error_queue=error_queue)
+            batch = []
         
         receive_queue.task_done()
         counter += 1
