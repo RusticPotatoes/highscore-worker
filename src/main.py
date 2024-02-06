@@ -166,7 +166,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
         now = time.time()
 
         # insert data in batches of N or interval of N
-        if len(batch) > 1000 or now-start_time > 15:
+        if len(batch) > 100 or now-start_time > 15:
             async with semaphore:
                 await insert_data(batch=batch, error_queue=error_queue)
             batch = []
