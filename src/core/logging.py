@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import warnings
 
 from core.config import settings
 
@@ -35,4 +36,5 @@ logging.getLogger("aiokafka").setLevel(logging.WARNING)
 
 # # https://github.com/aio-libs/aiomysql/issues/103
 # # https://github.com/coleifer/peewee/issues/2229
-# warnings.filterwarnings("ignore", ".*Duplicate entry.*")
+warnings.filterwarnings("ignore", ".*Duplicate entry.*")
+warnings.filterwarnings('ignore', module=r"aiomysql")

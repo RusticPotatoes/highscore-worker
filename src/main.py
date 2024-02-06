@@ -12,7 +12,7 @@ from database.database import get_session
 from database.models.highscores import PlayerHiscoreData
 from database.models.player import Player
 from sqlalchemy import insert, update
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Insert, Update
 
@@ -96,7 +96,7 @@ async def insert_data(batch: list[dict], error_queue:Queue):
         session: AsyncSession = await get_session()
         
         logger.info(f"Received: {len(players)=}, {len(highscores)=}")
-        
+
         # start a transaction
         async with session.begin():
             # insert into table values ()
@@ -110,7 +110,7 @@ async def insert_data(batch: list[dict], error_queue:Queue):
                 update_sql = update_sql.where(Player.id == player.get("id"))
                 update_sql = update_sql.values(player)
                 await session.execute(update_sql)
-    except OperationalError as e:
+    except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
 
