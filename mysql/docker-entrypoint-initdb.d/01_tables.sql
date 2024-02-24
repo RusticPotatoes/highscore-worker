@@ -162,4 +162,3 @@ CREATE TABLE player_activities (
   FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE,
   PRIMARY KEY (scraper_id, activity_id)
 );
-commit;
