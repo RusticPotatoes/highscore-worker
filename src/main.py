@@ -6,14 +6,16 @@ import traceback
 from asyncio import Queue
 from datetime import datetime, timedelta
 
+
 from core.config import settings
 from database.database import get_session
 from database.models.highscores import (
     Activities as ActivitiesDB,
     Skills as SkillsDB,
 )
+from database.models.player import Player
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -76,8 +78,19 @@ def log_speed(
     # Return the current time and reset the counter to zero
     return time.time(), 0
 
-
 async def insert_data_v1(batch: list[Message], error_queue: Queue):
+    """
+    1. check for duplicates in scraper_data[player_id, record_date], remove all duplicates
+    2. start transaction
+    3. for each player insert into scraper_data
+    4. for each player get the scraper_id from scraper_data
+    5. insert into player_skills (scraper_id, skill_id) values (), ()
+    6. insert into player_activities (scraper_id, activity_id) values (), ()
+    
+    step 5 & 6 must be batched for all players at once
+    """
+    session: AsyncSession = await get_session()
+    logger.debug(batch[:1])
     try:
         highscores = [
             PlayerHiscoreData(**msg.hiscores) for msg in batch if msg.hiscores
