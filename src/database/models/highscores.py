@@ -133,7 +133,7 @@ class ScraperData(Base):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     player_id = Column(SmallInteger, nullable=False)
     record_date = Column(Date, nullable=True, server_onupdate=func.current_date())
-
+    player_skills = relationship("PlayerSkills", back_populates="scraper_data")
     __table_args__ = (
         UniqueConstraint("player_id", "record_date", name="unique_player_per_day"),
     )
@@ -149,6 +149,8 @@ class Skills(Base):
 
     skill_id = Column(SmallInteger, primary_key=True, autoincrement=True)
     skill_name = Column(String(50), nullable=False)
+
+    player_skills = relationship("PlayerSkills", back_populates="skill")
 
     __table_args__ = (UniqueConstraint("skill_name", name="unique_skill_name"),)
 
@@ -192,7 +194,7 @@ class PlayerSkills(Base):
     skill_value = Column(Integer, nullable=False, default=0)
 
     scraper_data = relationship("ScraperData", back_populates="player_skills")
-    skills = relationship("Skills", back_populates="player_skills")
+    skill = relationship("Skills", back_populates="player_skills")
 
 
 # CREATE TABLE player_activities (

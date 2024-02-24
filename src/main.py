@@ -188,12 +188,14 @@ async def transform_data(old_data: dict, session: AsyncSession) -> dict:
     # Fetch the skill and activity names from the database if they're not already cached
     async with CACHE_UPDATE_LOCK:
         if SKILL_NAMES is None:
-            skill_names = await session.execute(select(PlayerSkills.skill_name))
+            skill_names = await session.execute(
+                select(PlayerSkills.skill_value)
+            )  # Update this line
             SKILL_NAMES = [result[0] for result in skill_names.scalars().all()]
         if ACTIVITY_NAMES is None:
             activity_names = await session.execute(
-                select(PlayerActivities.activity_name)
-            )
+                select(PlayerActivities.activity_value)
+            )  # And this line
             ACTIVITY_NAMES = [result[0] for result in activity_names.scalars().all()]
 
     # Transform the old data format into the new format
