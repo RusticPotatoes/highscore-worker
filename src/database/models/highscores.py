@@ -1,6 +1,6 @@
 from sqlalchemy import (
     BigInteger,
-    SmallInteger,
+    TinyInteger,
     Column,
     Date,
     DateTime,
@@ -147,7 +147,7 @@ class ScraperData(Base):
 class Skills(Base):
     __tablename__ = "skills"
 
-    skill_id = Column(SmallInteger, primary_key=True, autoincrement=True)
+    skill_id = Column(TinyInteger, primary_key=True, autoincrement=True)
     skill_name = Column(String(50), nullable=False)
 
     player_skills = relationship("PlayerSkills", back_populates="skill")
@@ -164,7 +164,7 @@ class Skills(Base):
 class Activities(Base):
     __tablename__ = "activities"
 
-    activity_id = Column(SmallInteger, primary_key=True, autoincrement=True)
+    activity_id = Column(TinyInteger, primary_key=True, autoincrement=True)
     activity_name = Column(String(50), nullable=False)
 
     __table_args__ = (UniqueConstraint("activity_name", name="unique_activity_name"),)
@@ -187,7 +187,7 @@ class PlayerSkills(Base):
         primary_key=True,
     )
     skill_id = Column(
-        SmallInteger,
+        TinyInteger,
         ForeignKey("skills.skill_id", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -216,7 +216,7 @@ class PlayerActivities(Base):
         primary_key=True,
     )
     activity_id = Column(
-        SmallInteger,
+        TinyInteger,
         ForeignKey("activities.activity_id", ondelete="CASCADE"),
         primary_key=True,
     )
