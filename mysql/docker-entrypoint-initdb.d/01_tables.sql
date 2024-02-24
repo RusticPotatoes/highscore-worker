@@ -125,7 +125,6 @@ CREATE TABLE `playerHiscoreData` (
 );
 CREATE TRIGGER `hiscore_date_OnInsert` BEFORE INSERT ON `playerHiscoreData` FOR EACH ROW SET new.ts_date = DATE(new.timestamp);
 
-# done
 CREATE TABLE scraper_data (
   scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
