@@ -1,6 +1,7 @@
 from sqlalchemy import (
     BigInteger,
     TinyInteger,
+    SmallInteger,
     Column,
     Date,
     DateTime,
