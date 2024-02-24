@@ -1,6 +1,18 @@
-from sqlalchemy import BigInteger, Column, Date, DateTime, Integer, func
+from sqlalchemy import (
+    BigInteger,
+    SmallInteger,
+    Column,
+    Date,
+    DateTime,
+    Integer,
+    func,
+    ForeignKey,
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.schema import UniqueConstraint
 
 from database.database import Base
+from sqlalchemy import String
 
 
 class PlayerHiscoreData(Base):
@@ -105,3 +117,105 @@ class PlayerHiscoreData(Base):
     the_leviathan = Column(Integer, default=0)
     the_whisperer = Column(Integer, default=0)
     vardorvis = Column(Integer, default=0)
+
+
+# CREATE TABLE scraper_data (
+#   scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+#   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+#   player_id SMALLINT UNSIGNED NOT NULL,
+#   record_date DATE AS (DATE(created_at)) STORED,
+#   UNIQUE KEY unique_player_per_day (player_id, record_date)
+# );
+class ScraperData(Base):
+    __tablename__ = "scraper_data"
+
+    scraper_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    player_id = Column(SmallInteger, nullable=False)
+    record_date = Column(Date, nullable=True, server_onupdate=func.current_date())
+
+    __table_args__ = (
+        UniqueConstraint("player_id", "record_date", name="unique_player_per_day"),
+    )
+
+
+# CREATE TABLE skills (
+#   skill_id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, # < 255
+#   skill_name VARCHAR(50) NOT NULL,
+#   UNIQUE KEY unique_skill_name (skill_name)
+# );
+class Skills(Base):
+    __tablename__ = "skills"
+
+    skill_id = Column(SmallInteger, primary_key=True, autoincrement=True)
+    skill_name = Column(String(50), nullable=False)
+
+    __table_args__ = (UniqueConstraint("skill_name", name="unique_skill_name"),)
+
+
+# done
+# CREATE TABLE activities (
+#   activity_id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, # < 255
+#   activity_name VARCHAR(50) NOT NULL,
+#   UNIQUE KEY unique_activity_name (activity_name)
+# );
+class Activities(Base):
+    __tablename__ = "activities"
+
+    activity_id = Column(SmallInteger, primary_key=True, autoincrement=True)
+    activity_name = Column(String(50), nullable=False)
+
+    __table_args__ = (UniqueConstraint("activity_name", name="unique_activity_name"),)
+
+
+# CREATE TABLE player_skills (
+#   scraper_id BIGINT UNSIGNED NOT NULL,
+#   skill_id TINYINT UNSIGNED NOT NULL,
+#   skill_value INT UNSIGNED NOT NULL DEFAULT 0, # < 200 000 000
+#   FOREIGN KEY (scraper_id) REFERENCES scraper_data(scraper_id) ON DELETE CASCADE,
+#   FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE,
+#   PRIMARY KEY (scraper_id, skill_id)
+# );
+class PlayerSkills(Base):
+    __tablename__ = "player_skills"
+
+    scraper_id = Column(
+        BigInteger,
+        ForeignKey("scraper_data.scraper_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    skill_id = Column(
+        SmallInteger,
+        ForeignKey("skills.skill_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    skill_value = Column(Integer, nullable=False, default=0)
+
+    scraper_data = relationship("ScraperData", back_populates="player_skills")
+    skills = relationship("Skills", back_populates="player_skills")
+
+
+# CREATE TABLE player_activities (
+#   scraper_id BIGINT UNSIGNED NOT NULL,
+#   activity_id TINYINT UNSIGNED NOT NULL,
+#   activity_value INT UNSIGNED NOT NULL DEFAULT 0, # some guy could get over 65k kc
+#   FOREIGN KEY (scraper_id) REFERENCES scraper_data(scraper_id) ON DELETE CASCADE,
+#   FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE,
+#   PRIMARY KEY (scraper_id, activity_id)
+# );
+
+
+class PlayerActivities(Base):
+    __tablename__ = "player_activities"
+
+    scraper_id = Column(
+        BigInteger,
+        ForeignKey("scraper_data.scraper_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    activity_id = Column(
+        SmallInteger,
+        ForeignKey("activities.activity_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    activity_value = Column(Integer, nullable=False, default=0)

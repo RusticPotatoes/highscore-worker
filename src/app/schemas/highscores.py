@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+from typing import Optional
 
 
 class playerHiscoreData(BaseModel):
@@ -105,3 +106,106 @@ class playerHiscoreData(BaseModel):
     the_leviathan: int = 0
     the_whisperer: int = 0
     vardorvis: int = 0
+
+
+class ScraperDataBase(BaseModel):
+    player_id: int
+
+
+class ScraperDataCreate(ScraperDataBase):
+    pass
+
+
+class ScraperData(ScraperDataBase):
+    scraper_id: int
+    created_at: Optional[str] = None
+    record_date: Optional[str] = None
+
+    class Config:
+        orm_mode = True
+
+
+class SkillBase(BaseModel):
+    skill_name: str
+
+
+class SkillCreate(SkillBase):
+    pass
+
+
+class Skill(SkillBase):
+    skill_id: int
+
+    class Config:
+        orm_mode = True
+
+
+class ActivityBase(BaseModel):
+    activity_name: str
+
+
+class ActivityCreate(ActivityBase):
+    pass
+
+
+class Activity(ActivityBase):
+    activity_id: int
+
+    class Config:
+        orm_mode = True
+
+
+class PlayerSkillBase(BaseModel):
+    scraper_id: int
+    skill_id: int
+    skill_value: int
+
+
+class PlayerSkillCreate(PlayerSkillBase):
+    pass
+
+
+class PlayerSkill(PlayerSkillBase):
+    class Config:
+        orm_mode = True
+
+
+class PlayerActivityBase(BaseModel):
+    scraper_id: int
+    activity_id: int
+    activity_value: int
+
+
+class PlayerActivityCreate(PlayerActivityBase):
+    pass
+
+
+class PlayerActivity(PlayerActivityBase):
+    class Config:
+        orm_mode = True
+
+
+class PlayerBase(BaseModel):
+    name: str
+    possible_ban: Optional[bool] = None
+    confirmed_ban: Optional[bool] = None
+    confirmed_player: Optional[bool] = None
+    label_id: Optional[int] = None
+    label_jagex: Optional[int] = None
+    ironman: Optional[bool] = None
+    hardcore_ironman: Optional[bool] = None
+    ultimate_ironman: Optional[bool] = None
+    normalized_name: str
+
+
+class PlayerCreate(PlayerBase):
+    pass
+
+
+class Player(PlayerBase):
+    id: int
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    class Config:
+        orm_mode = True
