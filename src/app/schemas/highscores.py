@@ -108,15 +108,8 @@ class playerHiscoreData(BaseModel):
     vardorvis: int = 0
 
 
-class ScraperDataBase(BaseModel):
+class ScraperData(BaseModel):
     player_id: int
-
-
-class ScraperDataCreate(ScraperDataBase):
-    pass
-
-
-class ScraperData(ScraperDataBase):
     scraper_id: int
     created_at: Optional[str] = None
     record_date: Optional[str] = None
@@ -125,67 +118,42 @@ class ScraperData(ScraperDataBase):
         orm_mode = True
 
 
-class SkillBase(BaseModel):
+class Skill(BaseModel):
+    skill_id: int
     skill_name: str
 
-
-class SkillCreate(SkillBase):
-    pass
-
-
-class Skill(SkillBase):
-    skill_id: int
-
     class Config:
         orm_mode = True
 
 
-class ActivityBase(BaseModel):
+class Activity(BaseModel):
+    activity_id: int
     activity_name: str
 
-
-class ActivityCreate(ActivityBase):
-    pass
-
-
-class Activity(ActivityBase):
-    activity_id: int
-
     class Config:
         orm_mode = True
 
 
-class PlayerSkillBase(BaseModel):
+class PlayerSkill(BaseModel):
     scraper_id: int
     skill_id: int
     skill_value: int
 
-
-class PlayerSkillCreate(PlayerSkillBase):
-    pass
-
-
-class PlayerSkill(PlayerSkillBase):
     class Config:
         orm_mode = True
 
 
-class PlayerActivityBase(BaseModel):
+class PlayerActivity(BaseModel):
     scraper_id: int
     activity_id: int
     activity_value: int
 
-
-class PlayerActivityCreate(PlayerActivityBase):
-    pass
-
-
-class PlayerActivity(PlayerActivityBase):
     class Config:
         orm_mode = True
 
 
-class PlayerBase(BaseModel):
+class Player(BaseModel):
+    id: int
     name: str
     possible_ban: Optional[bool] = None
     confirmed_ban: Optional[bool] = None
@@ -196,14 +164,6 @@ class PlayerBase(BaseModel):
     hardcore_ironman: Optional[bool] = None
     ultimate_ironman: Optional[bool] = None
     normalized_name: str
-
-
-class PlayerCreate(PlayerBase):
-    pass
-
-
-class Player(PlayerBase):
-    id: int
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
