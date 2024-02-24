@@ -28,7 +28,15 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Insert, Update
 
+from pydantic import BaseModel
+
 logger = logging.getLogger(__name__)
+
+
+class Message(BaseModel):
+    hiscore: dict
+    player: dict | None
+
 
 # Global variables to cache the skill and activity names
 SKILL_NAMES = None
@@ -105,7 +113,7 @@ def log_speed(
     return time.time(), 0
 
 
-async def insert_data(batch: list[dict], error_queue: Queue):
+async def insert_data(batch: list[Message], error_queue: Queue):
     session: AsyncSession = await get_session()
 
     try:
@@ -182,11 +190,6 @@ async def insert_data(batch: list[dict], error_queue: Queue):
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
 
-import logging
-
-logger = logging.getLogger(__name__)
-
-
 async def transform_data(old_data: dict, session: AsyncSession) -> dict:
     global SKILL_NAMES, ACTIVITY_NAMES
 
@@ -247,7 +250,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
     # limit the number of async insert_data calls
     semaphore = asyncio.Semaphore(5)
 
-    batch = []
+    batch: list[Message] = []
     # Run indefinitely
     while True:
         start_time, counter = log_speed(
@@ -265,10 +268,11 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
         # Get a message from the chosen queue
         message: dict = await receive_queue.get()
+        message: Message = Message(**message)
 
         # TODO fix test data
         if settings.ENV != "PRD":
-            player = message.get("player")
+            player = message.player
             player_id = player.get("id")
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
