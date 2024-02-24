@@ -182,20 +182,25 @@ async def insert_data(batch: list[dict], error_queue: Queue):
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 async def transform_data(old_data: dict, session: AsyncSession) -> dict:
     global SKILL_NAMES, ACTIVITY_NAMES
+
+    logger.debug(f"Input data: {old_data}")
 
     # Fetch the skill and activity names from the database if they're not already cached
     async with CACHE_UPDATE_LOCK:
         if SKILL_NAMES is None:
-            skill_names = await session.execute(
-                select(PlayerSkills.skill_value)
-            )  # Update this line
+            skill_names = await session.execute(select(PlayerSkills.skill_value))
             SKILL_NAMES = [result[0] for result in skill_names.scalars().all()]
         if ACTIVITY_NAMES is None:
             activity_names = await session.execute(
                 select(PlayerActivities.activity_value)
-            )  # And this line
+            )
             ACTIVITY_NAMES = [result[0] for result in activity_names.scalars().all()]
 
     # Transform the old data format into the new format
@@ -218,6 +223,9 @@ async def transform_data(old_data: dict, session: AsyncSession) -> dict:
             "id": old_data.get("Player_id"),
         },
     }
+
+    logger.debug(f"Transformed data: {new_data}")
+
     return new_data
 
 
