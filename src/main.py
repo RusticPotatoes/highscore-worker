@@ -9,18 +9,19 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from sqlalchemy import select
 from app.schemas.highscores import (
     playerHiscoreData as playerHiscoreDataSchema,
-    PlayerActivityCreate,
-    ScraperDataCreate,
-    PlayerSkillCreate,
-    PlayerCreate,
+    playerActivities as playerActivitiesSchema,
+    scraperData as scraperDataSchema,
+    playerSkills as playerSkillsSchema,
+    player as playerSchema,
 )
 from core.config import settings
 from database.database import get_session
 from database.models.highscores import (
-    # PlayerHiscoreData,
     PlayerActivities,
     PlayerSkills,
     ScraperData,
+    Skills,
+    Activities,
 )
 from database.models.player import Player
 from sqlalchemy import insert, update
@@ -30,19 +31,40 @@ from sqlalchemy.sql.expression import Insert, Update
 
 from pydantic import BaseModel
 
+import os
+import debugpy
+
+# if os.getenv("ENABLE_DEBUGPY") == "true":
+#     debugpy.listen(("0.0.0.0", 5678))
+#     print("Waiting for debugger to attach...")
+#     debugpy.wait_for_client()
+
 logger = logging.getLogger(__name__)
 
 
 class Message(BaseModel):
-    hiscore: dict
-    player: dict | None
+    hiscores: playerHiscoreDataSchema | None
+    player: playerSchema | None
 
+
+class NewDataSchema(BaseModel):
+    scraper_data: scraperDataSchema
+    player_skills: list[playerSkillsSchema]
+    player_activities: list[playerActivitiesSchema]
+    player: playerSchema
+
+
+from datetime import datetime, timedelta
 
 # Global variables to cache the skill and activity names
-SKILL_NAMES = None
-ACTIVITY_NAMES = None
-# Global lock for updating the cache
-CACHE_UPDATE_LOCK = asyncio.Lock()
+SKILL_NAMES: list[playerSkillsSchema] = []
+ACTIVITY_NAMES: list[playerActivitiesSchema] = []
+# Global variables for the locks
+SKILL_NAMES_LOCK = asyncio.Lock()
+ACTIVITY_NAMES_LOCK = asyncio.Lock()
+# Global variable to track when the cache was last updated
+LAST_SKILL_NAMES_UPDATE = datetime.min
+LAST_ACTIVITY_NAMES_UPDATE = datetime.min
 
 
 async def kafka_consumer(topic: str, group: str):
@@ -84,7 +106,9 @@ async def send_messages(topic: str, producer: AIOKafkaProducer, send_queue: Queu
             await asyncio.sleep(1)
             continue
         message = await send_queue.get()
-        await producer.send(topic, value=message)
+        # Convert the Message object to a JSON serializable dictionary
+        message_dict = message.model_dump_json()
+        await producer.send(topic, value=message_dict)
         send_queue.task_done()
 
 
@@ -113,68 +137,157 @@ def log_speed(
     return time.time(), 0
 
 
-async def insert_data(batch: list[Message], error_queue: Queue):
-    session: AsyncSession = await get_session()
+# async def insert_data(batch: list[dict], error_queue: Queue):
+#     try:
+#         highscores: list[dict] = [msg.get("hiscores") for msg in batch]
+#         players: list[dict] = [msg.get("player") for msg in batch]
 
-    try:
-        # Transform the old data format into the new format
-        batch = [await transform_data(msg, session) for msg in batch]
+#         highscores = [playerHiscoreDataSchema(**hs) for hs in highscores if hs]
+#         highscores = [hs.model_dump(mode="json") for hs in highscores]
 
-        scraper_data_list: list[dict] = [msg.get("scraper_data") for msg in batch]
-        player_skills_list: list[dict] = [msg.get("player_skills") for msg in batch]
-        player_activities_list: list[dict] = [
-            msg.get("player_activities") for msg in batch
-        ]
-        players: list[dict] = [msg.get("player") for msg in batch]
+#         session: AsyncSession = await get_session()
 
-        scraper_data_list = [ScraperDataCreate(**sd) for sd in scraper_data_list if sd]
-        player_skills_list = [
-            PlayerSkillCreate(**ps) for ps in player_skills_list if ps
-        ]
-        player_activities_list = [
-            PlayerActivityCreate(**pa) for pa in player_activities_list if pa
-        ]
-        players = [PlayerCreate(**p) for p in players if p]
+#         logger.info(f"Received: {len(players)=}, {len(highscores)=}")
 
-        logger.info(
-            f"Received: players={len(players)}, scraper_data={len(scraper_data_list)}, skills={len(player_skills_list)}, activities={len(player_activities_list)}"
+#         # start a transaction
+#         async with session.begin():
+#             # insert into table values ()
+#             insert_sql: Insert = insert(PlayerHiscoreData)
+#             insert_sql = insert_sql.values(highscores)
+#             insert_sql = insert_sql.prefix_with("ignore")
+#             await session.execute(insert_sql)
+#             # update table
+#             for player in players:
+#                 update_sql: Update = update(Player)
+#                 update_sql = update_sql.where(Player.id == player.get("id"))
+#                 update_sql = update_sql.values(player)
+#                 await session.execute(update_sql)
+#     except (OperationalError, IntegrityError) as e:
+#         for message in batch:
+#             await error_queue.put(message)
+
+#         logger.error({"error": e})
+#         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+#     except Exception as e:
+#         for message in batch:
+#             await error_queue.put(message)
+
+#         logger.error({"error": e})
+#         logger.debug(f"Traceback: \n{traceback.format_exc()}")
+#         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+
+
+async def check_and_update_skill_cache(batch: list[Message], session: AsyncSession):
+    global SKILL_NAMES, LAST_SKILL_NAMES_UPDATE, SKILL_NAMES_LOCK, ACTIVITY_NAMES
+
+    # Query the cache to get the skill IDs
+    skill_ids = {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
+
+    missing_skills = [
+        skill
+        for message in batch
+        for skill in message.hiscores.model_fields.keys()
+        if skill
+        not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
+        and skill not in skill_ids
+    ]
+    if missing_skills:
+        # Check if the cache was updated less than 10 minutes ago
+        if datetime.now() - LAST_SKILL_NAMES_UPDATE < timedelta(minutes=10):
+            logger.warning(
+                "Skill names cache update was called less than 10 minutes ago. Skipping batch."
+            )
+            return None  # Or however you want to handle this case
+
+        # Update the skill names cache
+        async with SKILL_NAMES_LOCK:
+            await update_skill_names(session)
+        LAST_SKILL_NAMES_UPDATE = datetime.now()
+
+        # Query the cache again to get the updated skill IDs
+        skill_ids = (
+            {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
         )
 
-        # start a transaction
+    return skill_ids
+
+
+async def check_and_update_activity_cache(batch: list[Message], session: AsyncSession):
+    global ACTIVITY_NAMES, LAST_ACTIVITY_NAMES_UPDATE, ACTIVITY_NAMES_LOCK, SKILL_NAMES
+
+    # Query the cache to get the activity IDs
+    activity_ids = (
+        {activity.name: activity.id for activity in ACTIVITY_NAMES}
+        if ACTIVITY_NAMES
+        else {}
+    )
+
+    # Check if any activity name in any message is not found in the cache
+    missing_activities = [
+        activity
+        for message in batch
+        for activity in message.hiscores.model_fields.keys()
+        if activity
+        not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
+        and activity not in activity_ids
+    ]
+    if missing_activities:
+        # Check if the cache was updated less than 10 minutes ago
+        if datetime.now() - LAST_ACTIVITY_NAMES_UPDATE < timedelta(minutes=10):
+            logger.warning(
+                "Activity names cache update was called less than 10 minutes ago. Skipping batch."
+            )
+            return None  # Or however you want to handle this case
+
+        # Update the activity names cache
+        async with ACTIVITY_NAMES_LOCK:
+            await update_activity_names(session)
+        LAST_ACTIVITY_NAMES_UPDATE = datetime.now()
+
+        # Query the cache again to get the updated activity IDs
+        activity_ids = (
+            {activity.name: activity.id for activity in ACTIVITY_NAMES}
+            if ACTIVITY_NAMES
+            else {}
+        )
+
+    return activity_ids
+
+
+async def insert_data(batch: list[Message], error_queue: Queue):
+    # debugpy.breakpoint()
+    global SKILL_NAMES, ACTIVITY_NAMES, LAST_SKILL_NAMES_UPDATE, LAST_ACTIVITY_NAMES_UPDATE
+
+    try:
+        session: AsyncSession = await get_session()
+
+        # # Check and update the skill and activity caches
+        # if (
+        #     await check_and_update_skill_cache(batch, session) is None
+        #     or await check_and_update_activity_cache(batch, session) is None
+        # ):
+        #     return
+
+        batch_return = await transform_data(batch, session)
         async with session.begin():
-            # insert into scraper_data table
-            for scraper_data in scraper_data_list:
-                insert_scraper_data = (
-                    insert(ScraperData)
-                    .values(scraper_data.dict())
-                    .prefix_with("ignore")
-                )
-                await session.execute(insert_scraper_data)
+            for new_data in batch_return:
+                # insert into scraper_data table
+                scraper_data = new_data.scraper_data
+                session.add(scraper_data)
 
-            # insert into player_skills table
-            for player_skill in player_skills_list:
-                insert_player_skill = (
-                    insert(PlayerSkills)
-                    .values(player_skill.dict())
-                    .prefix_with("ignore")
-                )
-                await session.execute(insert_player_skill)
+                # insert into player_skills table
+                player_skills = new_data.player_skills
+                session.bulk_save_objects(player_skills)
 
-            # insert into player_activities table
-            for player_activity in player_activities_list:
-                insert_player_activity = (
-                    insert(PlayerActivities)
-                    .values(player_activity.dict())
-                    .prefix_with("ignore")
-                )
-                await session.execute(insert_player_activity)
+                # insert into player_activities table
+                player_activities = new_data.player_activities
+                session.bulk_save_objects(player_activities)
 
-            # update Player table
-            for player in players:
-                update_sql: Update = update(Player)
-                update_sql = update_sql.where(Player.id == player.id)
-                update_sql = update_sql.values(player.dict())
-                await session.execute(update_sql)
+                # update Player table
+                player = new_data.player
+                session.merge(player)
+
+            await session.commit()
     except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
@@ -190,56 +303,117 @@ async def insert_data(batch: list[Message], error_queue: Queue):
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
 
-async def transform_data(old_data: dict, session: AsyncSession) -> dict:
-    global SKILL_NAMES, ACTIVITY_NAMES
+async def transform_data(
+    old_data_list: list[Message], session: AsyncSession
+) -> NewDataSchema:
+    global SKILL_NAMES, ACTIVITY_NAMES, LAST_CACHE_UPDATE
 
-    logger.debug(f"Input data: {old_data}")
+    new_data_list = []
 
-    # Fetch the skill and activity names from the database if they're not already cached
-    async with CACHE_UPDATE_LOCK:
+    for old_data in old_data_list:
+
+        # Query the cache to get the skill and activity IDs
+        skill_ids = (
+            {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
+        )
+        activity_ids = (
+            {activity.name: activity.id for activity in ACTIVITY_NAMES}
+            if ACTIVITY_NAMES
+            else {}
+        )
+
+        # Transform the old data format into the new format
+        new_data = NewDataSchema(
+            **{
+                "scraper_data": {
+                    "scraper_id": old_data.player.id if old_data.player else None,
+                    "created_at": (
+                        old_data.hiscores.timestamp.isoformat()
+                        if old_data.hiscores
+                        else None
+                    ),
+                    "player_id": (
+                        old_data.hiscores.Player_id if old_data.hiscores else None
+                    ),
+                    "record_date": (
+                        datetime.utcnow().isoformat() if old_data.hiscores else None
+                    ),
+                },
+                "player_skills": (
+                    [
+                        {
+                            "skill_id": (
+                                skill_ids[skill.name]
+                                if skill.name in skill_ids
+                                else None
+                            ),
+                            "skill_value": (
+                                getattr(old_data.hiscores, skill.name, None)
+                                if old_data.hiscores
+                                else None
+                            ),
+                        }
+                        for skill in SKILL_NAMES
+                    ]
+                    if SKILL_NAMES
+                    else []
+                ),
+                "player_activities": (
+                    [
+                        {
+                            "activity_id": (
+                                activity_ids[activity.name]
+                                if activity.name in activity_ids
+                                else None
+                            ),
+                            "activity_value": (
+                                getattr(old_data.hiscores, activity.name, None)
+                                if old_data.hiscores
+                                else None
+                            ),
+                        }
+                        for activity in ACTIVITY_NAMES
+                    ]
+                    if ACTIVITY_NAMES
+                    else []
+                ),
+                "player": {
+                    "id": old_data.hiscores.Player_id if old_data.hiscores else None,
+                    "name": old_data.player.name if old_data.player else None,
+                    "normalized_name": (
+                        old_data.player.normalized_name if old_data.player else None
+                    ),
+                },
+            }
+        )
+
+        logger.debug(f"Transformed data: {new_data}")
+        new_data_list.append(new_data)
+
+    return new_data_list
+
+
+async def update_skill_names(session: AsyncSession):
+    global SKILL_NAMES, SKILL_NAMES_LOCK
+
+    async with SKILL_NAMES_LOCK:
         if SKILL_NAMES is None:
-            skill_names = await session.execute(select(PlayerSkills.skill_value))
-            SKILL_NAMES = [result[0] for result in skill_names.scalars().all()]
+            skill_records = await session.execute(select(Skills))
+            SKILL_NAMES = [
+                playerSkillsSchema(**record) for record in skill_records.scalars().all()
+            ]
+
+
+async def update_activity_names(session: AsyncSession):
+    global ACTIVITY_NAMES, ACTIVITY_NAMES_LOCK
+
+    async with ACTIVITY_NAMES_LOCK:
         if ACTIVITY_NAMES is None:
-            activity_names = await session.execute(
-                select(PlayerActivities.activity_value)
-            )
-            ACTIVITY_NAMES = [result[0] for result in activity_names.scalars().all()]
-
-    # Transform the old data format into the new format
-    new_data = {
-        "scraper_data": {
-            "scraper_id": old_data.get("id"),
-            "created_at": old_data.get("timestamp"),
-            "player_id": old_data.get("Player_id"),
-            "record_date": old_data.get("ts_date"),
-        },
-        "player_skills": [
-            {"skill_id": i, "skill_value": old_data.get(skill)}
-            for i, skill in enumerate(SKILL_NAMES)
-        ],
-        "player_activities": [
-            {"activity_id": i, "activity_value": old_data.get(activity)}
-            for i, activity in enumerate(ACTIVITY_NAMES)
-        ],
-        "player": {
-            "id": old_data.get("Player_id"),
-        },
-    }
-
-    logger.debug(f"Transformed data: {new_data}")
-
-    return new_data
-
-
-async def update_cache(session: AsyncSession):
-    global SKILL_NAMES, ACTIVITY_NAMES
-
-    # Fetch the skill and activity names from the database
-    skill_names = await session.execute(select(PlayerSkills.skill_name))
-    SKILL_NAMES = [result[0] for result in skill_names.scalars().all()]
-    activity_names = await session.execute(select(PlayerActivities.activity_name))
-    ACTIVITY_NAMES = [result[0] for result in activity_names.scalars().all()]
+            activity_records = await session.execute(select(Activities))
+            ACTIVITY_NAMES = [
+                playerActivitiesSchema(**record)
+                for record in activity_records.scalars().all()
+            ]
 
 
 async def process_data(receive_queue: Queue, error_queue: Queue):
@@ -268,12 +442,19 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
         # Get a message from the chosen queue
         message: dict = await receive_queue.get()
-        message: Message = Message(**message)
+        # debugpy.breakpoint()
+        # make sure the message has the 'hiscores' key and it's not None
+        if "hiscores" not in message or message["hiscores"] is None:
+            continue
+        # Ensure the 'player.normalized_name' key exists in the message
+        if "player" in message and "normalized_name" not in message["player"]:
+            message["player"]["normalized_name"] = ""  # or some default value
 
+        message: Message = Message(**message)
         # TODO fix test data
         if settings.ENV != "PRD":
             player = message.player
-            player_id = player.get("id")
+            player_id = player.id  # Access the 'id' attribute directly
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
             if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):

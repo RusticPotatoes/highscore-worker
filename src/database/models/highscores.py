@@ -1,7 +1,4 @@
 from sqlalchemy import (
-    BigInteger,
-    TinyInteger,
-    SmallInteger,
     Column,
     Date,
     DateTime,
@@ -9,6 +6,7 @@ from sqlalchemy import (
     func,
     ForeignKey,
 )
+from sqlalchemy.dialects.mysql import BIGINT, TINYINT, SMALLINT
 from sqlalchemy.orm import relationship
 from sqlalchemy.schema import UniqueConstraint
 
@@ -19,11 +17,11 @@ from sqlalchemy import String
 class PlayerHiscoreData(Base):
     __tablename__ = "playerHiscoreData"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, server_default=func.now())
     ts_date = Column(Date, nullable=True)
     Player_id = Column(Integer, nullable=False)
-    total = Column(BigInteger, default=0)
+    total = Column(BIGINT, default=0)
     attack = Column(Integer, default=0)
     defence = Column(Integer, default=0)
     strength = Column(Integer, default=0)
@@ -130,9 +128,9 @@ class PlayerHiscoreData(Base):
 class ScraperData(Base):
     __tablename__ = "scraper_data"
 
-    scraper_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    scraper_id = Column(BIGINT, primary_key=True, autoincrement=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
-    player_id = Column(SmallInteger, nullable=False)
+    player_id = Column(SMALLINT, nullable=False)
     record_date = Column(Date, nullable=True, server_onupdate=func.current_date())
     player_skills = relationship("PlayerSkills", back_populates="scraper_data")
     __table_args__ = (
@@ -148,7 +146,7 @@ class ScraperData(Base):
 class Skills(Base):
     __tablename__ = "skills"
 
-    skill_id = Column(TinyInteger, primary_key=True, autoincrement=True)
+    skill_id = Column(TINYINT, primary_key=True, autoincrement=True)
     skill_name = Column(String(50), nullable=False)
 
     player_skills = relationship("PlayerSkills", back_populates="skill")
@@ -165,7 +163,7 @@ class Skills(Base):
 class Activities(Base):
     __tablename__ = "activities"
 
-    activity_id = Column(TinyInteger, primary_key=True, autoincrement=True)
+    activity_id = Column(TINYINT, primary_key=True, autoincrement=True)
     activity_name = Column(String(50), nullable=False)
 
     __table_args__ = (UniqueConstraint("activity_name", name="unique_activity_name"),)
@@ -183,12 +181,12 @@ class PlayerSkills(Base):
     __tablename__ = "player_skills"
 
     scraper_id = Column(
-        BigInteger,
+        BIGINT,
         ForeignKey("scraper_data.scraper_id", ondelete="CASCADE"),
         primary_key=True,
     )
     skill_id = Column(
-        TinyInteger,
+        TINYINT,
         ForeignKey("skills.skill_id", ondelete="CASCADE"),
         primary_key=True,
     )
@@ -212,12 +210,12 @@ class PlayerActivities(Base):
     __tablename__ = "player_activities"
 
     scraper_id = Column(
-        BigInteger,
+        BIGINT,
         ForeignKey("scraper_data.scraper_id", ondelete="CASCADE"),
         primary_key=True,
     )
     activity_id = Column(
-        TinyInteger,
+        TINYINT,
         ForeignKey("activities.activity_id", ondelete="CASCADE"),
         primary_key=True,
     )

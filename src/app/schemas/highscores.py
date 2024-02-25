@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 from typing import Optional
+from datetime import date
 
 
 class playerHiscoreData(BaseModel):
@@ -108,51 +109,48 @@ class playerHiscoreData(BaseModel):
     vardorvis: int = 0
 
 
-class ScraperData(BaseModel):
+class scraperData(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     player_id: int
     scraper_id: int
     created_at: Optional[str] = None
     record_date: Optional[str] = None
 
-    class Config:
-        orm_mode = True
 
+class skills(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class Skill(BaseModel):
     skill_id: int
     skill_name: str
 
-    class Config:
-        orm_mode = True
 
+class activities(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class Activity(BaseModel):
     activity_id: int
     activity_name: str
 
-    class Config:
-        orm_mode = True
 
+class playerSkills(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class PlayerSkill(BaseModel):
     scraper_id: int
     skill_id: int
     skill_value: int
 
-    class Config:
-        orm_mode = True
 
+class playerActivities(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class PlayerActivity(BaseModel):
     scraper_id: int
     activity_id: int
     activity_value: int
 
-    class Config:
-        orm_mode = True
 
+class player(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-class Player(BaseModel):
     id: int
     name: str
     possible_ban: Optional[bool] = None
@@ -166,6 +164,3 @@ class Player(BaseModel):
     normalized_name: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
-    class Config:
-        orm_mode = True
