@@ -6,33 +6,31 @@ import traceback
 from asyncio import Queue
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from sqlalchemy import select
+from app.schemas.highscores import (
+    player as playerSchema,
+)
+from app.schemas.highscores import (
+    playerActivities as playerActivitiesSchema,
+)
 from app.schemas.highscores import (
     playerHiscoreData as playerHiscoreDataSchema,
-    playerActivities as playerActivitiesSchema,
-    scraperData as scraperDataSchema,
+)
+from app.schemas.highscores import (
     playerSkills as playerSkillsSchema,
-    player as playerSchema,
+)
+from app.schemas.highscores import (
+    scraperData as scraperDataSchema,
 )
 from core.config import settings
 from database.database import get_session
 from database.models.highscores import (
-    PlayerActivities,
-    PlayerSkills,
-    ScraperData,
-    Skills,
     Activities,
+    Skills,
 )
-from database.models.player import Player
-from sqlalchemy import insert, update
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.expression import Insert, Update
-
-from pydantic import BaseModel
-
-import os
-import debugpy
 
 # if os.getenv("ENABLE_DEBUGPY") == "true":
 #     debugpy.listen(("0.0.0.0", 5678))
@@ -255,6 +253,16 @@ async def check_and_update_activity_cache(batch: list[Message], session: AsyncSe
 
 
 async def insert_data(batch: list[Message], error_queue: Queue):
+    """
+    1. check for duplicates in scraper_data[player_id, record_date], remove all duplicates
+    2. start transaction
+    3. for each player insert into scraper_data
+    4. for each player get the scraper_id from scraper_data
+    5. insert into player_skills (scraper_id, skill_id) values (), ()
+    6. insert into player_activities (scraper_id, activity_id) values (), ()
+    
+    step 5 & 6 must be batched for all players at once
+    """
     # debugpy.breakpoint()
     global SKILL_NAMES, ACTIVITY_NAMES, LAST_SKILL_NAMES_UPDATE, LAST_ACTIVITY_NAMES_UPDATE
 

@@ -1,11 +1,9 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
-from typing import Optional
-from datetime import date
 
 
-class playerHiscoreData(BaseModel):
+class PlayerHiscoreData(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     # id: Optional[int] = None
@@ -107,60 +105,3 @@ class playerHiscoreData(BaseModel):
     the_leviathan: int = 0
     the_whisperer: int = 0
     vardorvis: int = 0
-
-
-class scraperData(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    player_id: int
-    scraper_id: int
-    created_at: Optional[str] = None
-    record_date: Optional[str] = None
-
-
-class skills(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    skill_id: int
-    skill_name: str
-
-
-class activities(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    activity_id: int
-    activity_name: str
-
-
-class playerSkills(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    scraper_id: int
-    skill_id: int
-    skill_value: int
-
-
-class playerActivities(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    scraper_id: int
-    activity_id: int
-    activity_value: int
-
-
-class player(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    possible_ban: Optional[bool] = None
-    confirmed_ban: Optional[bool] = None
-    confirmed_player: Optional[bool] = None
-    label_id: Optional[int] = None
-    label_jagex: Optional[int] = None
-    ironman: Optional[bool] = None
-    hardcore_ironman: Optional[bool] = None
-    ultimate_ironman: Optional[bool] = None
-    normalized_name: str
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
