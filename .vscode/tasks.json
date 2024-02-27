@@ -6,17 +6,12 @@
             "type": "shell",
             "command": "docker-compose down --volumes && docker-compose up --build -d",
             "isBackground": true,
-            "problemMatcher": {
-                "owner": "custom",
-                "pattern": {
-                    "regexp": "^(.*)$"
-                },
-                "background": {
-                    "activeOnStart": true,
-                    "beginsPattern": "^(.*Starting development server.*)$",
-                    "endsPattern": "^(.*Attaching to.*)$"
-                }
-            }
+        },
+        {
+            "label": "compose-up-dev",
+            "type": "shell",
+            "command": "docker-compose -f docker-compose-dev.yml down --volumes && docker-compose -f docker-compose-dev.yml up --build -d",
+            "isBackground": true,
         }
     ]
 }

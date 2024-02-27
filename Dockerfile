@@ -13,8 +13,8 @@ WORKDIR /project
 COPY ./requirements.txt /project
 RUN pip install --no-cache-dir -r requirements.txt
 
-# PTVSD is a Python debugger that can be used in a container
-ARG INSTALL_PTVSD=false
+# # PTVSD is a Python debugger that can be used in a container
+# ARG INSTALL_PTVSD=false
 RUN if [ "$INSTALL_PTVSD" = "true" ] ; then pip install debugpy ; fi
 
 # copy the scripts to the folder

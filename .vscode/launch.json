@@ -27,5 +27,30 @@
             "console": "integratedTerminal",
             "justMyCode": true
         },
+        {
+            "name": "Compose Up Dev",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main.py", // replace with your script
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "preLaunchTask": "compose-up-dev" // name of the task to run before launching
+        },
+        {
+            "name": "Run Dev",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["--root_path", "/", "--api_port", "5000"],
+            "env": {
+                "KAFKA_HOST": "kafka:9092",
+                "DATABASE_URL": "mysql+aiomysql://root:root_bot_buster@mysql:3306/playerdata",
+                "POOL_TIMEOUT": "30",
+                "POOL_RECYCLE": "30"
+            }
+        }
     ]
 }
+
