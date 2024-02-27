@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 
 from core.config import settings
 from database.database import get_session
-from database.models.highscores import PlayerHiscoreData
-from database.models.player import Player
+from database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
+from database.models.player import Player as PlayerDB
 from database.models.skills import PlayerSkills as PlayerSkillsDB, Skills as SkillsDB
 from database.models.activities import PlayerActivities as PlayerActivitiesDB, Activities as ActivitiesDB
 from pydantic import BaseModel
@@ -93,14 +93,14 @@ async def insert_data_v1(batch: list[Message], error_queue: Queue):
         # start a transaction
         async with session.begin():
             # insert into table values ()
-            insert_sql:Insert = insert(PlayerHiscoreData) # fixing v1, currently debugging here
+            insert_sql:Insert = insert(PlayerHiscoreDataDB) # fixing v1, currently debugging here
             insert_sql = insert_sql.values(highscores)
             insert_sql = insert_sql.prefix_with("ignore")
             await session.execute(insert_sql)
             # update table
             for player in players:
-                update_sql:Update = update(Player)
-                update_sql = update_sql.where(Player.id == player.get("id"))
+                update_sql:Update = update(PlayerDB)
+                update_sql = update_sql.where(PlayerDB.id == player.get("id"))
                 update_sql = update_sql.values(player)
                 await session.execute(update_sql)
     except (OperationalError, IntegrityError) as e:
