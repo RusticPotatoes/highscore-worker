@@ -1,11 +1,11 @@
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.repositories.abc import ABCRepo
-from src.app.schemas.input.highscore import PlayerHiscoreData
-from src.app.schemas.input.player import Player
-from src.database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
-from src.database.models.player import Player as PlayerDB
+from app.repositories.abc import ABCRepo
+from app.schemas.input.highscore import PlayerHiscoreData
+from app.schemas.input.player import Player
+from database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
+from database.models.player import Player as PlayerDB
 
 
 class HighscoreRepo(ABCRepo):

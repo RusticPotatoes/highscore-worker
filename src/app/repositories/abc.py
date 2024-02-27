@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.database.database import get_session
+from database.database import get_session
 
 
 class ABCRepo(ABC):

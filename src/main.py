@@ -9,24 +9,24 @@ from datetime import datetime, timedelta
 
 from core.config import settings
 from database.database import get_session
-from database.models.highscores import (
-    Activities as ActivitiesDB,
-    Skills as SkillsDB,
-)
+from database.models.highscores import PlayerHiscoreData
 from database.models.player import Player
+from database.models.skills import PlayerSkills as PlayerSkillsDB, Skills as SkillsDB
+from database.models.activities import PlayerActivities as PlayerActivitiesDB, Activities as ActivitiesDB
 from pydantic import BaseModel
-from sqlalchemy import insert, select, update
+from sqlalchemy import insert, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.expression import Insert, Update
 
-from src import kafka
+import my_kafka as my_kafka
 # schemas import
-from src.app.repositories.highscore import HighscoreRepo
-from src.app.schemas.input.highscore import PlayerHiscoreData
-from src.app.schemas.input.player import Player
-from src.app.schemas.input.scraper_data import ScraperData
-from src.app.schemas.input.activities import Activities, PlayerActivities
-from src.app.schemas.input.skills import Skills, PlayerSkills
+from app.repositories.highscore import HighscoreRepo
+from app.schemas.input.highscore import PlayerHiscoreData
+from app.schemas.input.player import Player
+from app.schemas.input.scraper_data import ScraperData
+from app.schemas.input.activities import Activities, PlayerActivities
+from app.schemas.input.skills import Skills, PlayerSkills
 
 logger = logging.getLogger(__name__)
 
@@ -79,26 +79,30 @@ def log_speed(
     return time.time(), 0
 
 async def insert_data_v1(batch: list[Message], error_queue: Queue):
-    """
-    1. check for duplicates in scraper_data[player_id, record_date], remove all duplicates
-    2. start transaction
-    3. for each player insert into scraper_data
-    4. for each player get the scraper_id from scraper_data
-    5. insert into player_skills (scraper_id, skill_id) values (), ()
-    6. insert into player_activities (scraper_id, activity_id) values (), ()
-    
-    step 5 & 6 must be batched for all players at once
-    """
-    session: AsyncSession = await get_session()
-    logger.debug(batch[:1])
     try:
-        highscores = [
-            PlayerHiscoreData(**msg.hiscores) for msg in batch if msg.hiscores
-        ]
-        players = [Player(**msg.player) for msg in batch]
+        highscores:list[dict] = [msg.get("hiscores") for msg in batch]
+        players:list[dict] = [msg.get("player") for msg in batch]
+
+        highscores = [PlayerHiscoreData(**hs) for hs in highscores if hs]
+        highscores = [hs.model_dump(mode="json") for hs in highscores ]
+
+        session: AsyncSession = await get_session()
+        
         logger.info(f"Received: {len(players)=}, {len(highscores)=}")
-        repo = HighscoreRepo()
-        await repo.create(highscore_data=highscores, player_data=players)
+
+        # start a transaction
+        async with session.begin():
+            # insert into table values ()
+            insert_sql:Insert = insert(PlayerHiscoreData) # fixing v1, currently debugging here
+            insert_sql = insert_sql.values(highscores)
+            insert_sql = insert_sql.prefix_with("ignore")
+            await session.execute(insert_sql)
+            # update table
+            for player in players:
+                update_sql:Update = update(Player)
+                update_sql = update_sql.where(Player.id == player.get("id"))
+                update_sql = update_sql.values(player)
+                await session.execute(update_sql)
     except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
@@ -363,7 +367,57 @@ async def update_activity_names(session: AsyncSession):
                 for record in activity_records.scalars().all()
             ]
 
-async def process_data(receive_queue: Queue, error_queue: Queue):
+async def process_data_v1(receive_queue: Queue, error_queue: Queue):
+    # Initialize counter and start time
+    counter = 0
+    start_time = time.time()
+
+    # limit the number of async insert_data calls
+    semaphore = asyncio.Semaphore(5)
+
+    batch = []
+    # Run indefinitely
+    while True:
+        start_time, counter = log_speed(
+            counter=counter,
+            start_time=start_time,
+            _queue=receive_queue,
+            topic="scraper",
+            interval=15
+        )
+
+        # Check if queue is empty
+        if receive_queue.empty():
+            await asyncio.sleep(1)
+            continue
+
+        # Get a message from the chosen queue
+        message: dict = await receive_queue.get()
+        
+        #TODO fix test data
+        if settings.ENV != "PRD":
+            player = message.get("player")
+            player_id = player.get("id")
+            MIN_PLAYER_ID = 0
+            MAX_PLAYER_ID = 300
+            if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):
+                continue
+        
+        # batch message
+        batch.append(message)
+
+        now = time.time()
+
+        # insert data in batches of N or interval of N
+        if len(batch) > 100 or now-start_time > 15:
+            async with semaphore:
+                await insert_data_v1(batch=batch, error_queue=error_queue)
+            batch = []
+        
+        receive_queue.task_done()
+        counter += 1
+
+async def process_data_v2(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
     counter = 0
     start_time = time.time()
@@ -388,15 +442,18 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             continue
 
         # Get a message from the chosen queue
-        message: dict = await receive_queue.get()
         message: Message = Message(**message)
 
         # TODO fix test data
         if settings.ENV != "PRD":
-            player = message.player
-            player_id = player.id  # Access the 'id' attribute directly
+            continue_flag = False
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
+            # original
+
+            player = message.player
+            player_id = player.id  # Access the 'id' attribute directly
+            
             if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):
                 continue
 
@@ -408,7 +465,6 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
         # insert data in batches of N or interval of N
         if len(batch) > 100 or now - start_time > 15:
             async with semaphore:
-                await insert_data_v1(batch=batch, error_queue=error_queue)
                 await insert_data_v2(batch=batch, error_queue=error_queue)
             batch = []
 
@@ -418,23 +474,27 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
 
 async def main():
     # get kafka engine
-    consumer = await kafka.kafka_consumer(topic="scraper", group="highscore-worker")
-    producer = await kafka.kafka_producer()
+    consumer = await my_kafka.kafka_consumer(topic="scraper", group="highscore-worker")
+    producer = await my_kafka.kafka_producer()
 
     receive_queue = Queue(maxsize=100)
     send_queue = Queue(maxsize=100)
 
     asyncio.create_task(
-        kafka.receive_messages(
+        my_kafka.receive_messages(
             consumer=consumer, receive_queue=receive_queue, error_queue=send_queue
         )
     )
     asyncio.create_task(
-        kafka.send_messages(topic="scraper", producer=producer, send_queue=send_queue)
+        my_kafka.send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
     asyncio.create_task(
-        process_data(receive_queue=receive_queue, error_queue=send_queue)
+        process_data_v1(receive_queue=receive_queue, error_queue=send_queue)
     )
+
+    # asyncio.create_task(
+    #     process_data_v2(receive_queue=receive_queue, error_queue=send_queue)
+    # )
 
     while True:
         await asyncio.sleep(60)
