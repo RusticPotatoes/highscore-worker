@@ -6,9 +6,6 @@ build:
 up:
 	docker-compose up -d
 
-updev:
-	docker-compose -f docker-compose-dev.yml up -d 
-
 down:
 	docker-compose down
 
@@ -17,6 +14,9 @@ clean:
 
 cleanbuild: clean
 	docker-compose up --build
+
+updev: clean
+	docker-compose -f docker-compose-dev.yml up -d 
 
 create:
 	python3 -m venv .venv

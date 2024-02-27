@@ -45,11 +45,12 @@
             "justMyCode": true,
             "args": ["--root_path", "/", "--api_port", "5000"],
             "env": {
-                "KAFKA_HOST": "kafka:9092",
-                "DATABASE_URL": "mysql+aiomysql://root:root_bot_buster@mysql:3306/playerdata",
+                "KAFKA_HOST": "localhost:9094",
+                "DATABASE_URL": "mysql+aiomysql://root:root_bot_buster@localhost:3306/playerdata",
                 "POOL_TIMEOUT": "30",
                 "POOL_RECYCLE": "30"
-            }
+            },
+            "cwd": "${workspaceFolder}/"
         }
     ]
 }
