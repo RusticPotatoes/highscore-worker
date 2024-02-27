@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 from core.config import settings
 from database.database import get_session
 from database.models.highscores import (
-    Activities,
-    Skills,
+    Activities as ActivitiesDB,
+    Skills as SkillsDB,
 )
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -18,28 +18,32 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src import kafka
+# schemas import
 from src.app.repositories.highscore import HighscoreRepo
 from src.app.schemas.input.highscore import PlayerHiscoreData
 from src.app.schemas.input.player import Player
+from src.app.schemas.input.scraper_data import ScraperData
+from src.app.schemas.input.activities import Activities, PlayerActivities
+from src.app.schemas.input.skills import Skills, PlayerSkills
 
 logger = logging.getLogger(__name__)
 
 
 class Message(BaseModel):
-    hiscores: playerHiscoreDataSchema | None
-    player: playerSchema | None
+    hiscores: PlayerHiscoreData | None
+    player: Player | None
 
 
 class NewDataSchema(BaseModel):
-    scraper_data: scraperDataSchema
-    player_skills: list[playerSkillsSchema]
-    player_activities: list[playerActivitiesSchema]
-    player: playerSchema
+    scraper_data: ScraperData
+    player_skills: list[PlayerSkills]
+    player_activities: list[PlayerActivities]
+    player: Player
 
 
 # Global variables to cache the skill and activity names
-SKILL_NAMES: list[playerSkillsSchema] = []
-ACTIVITY_NAMES: list[playerActivitiesSchema] = []
+SKILL_NAMES: list[Skills] = []
+ACTIVITY_NAMES: list[Activities] = []
 # Global variables for the locks
 SKILL_NAMES_LOCK = asyncio.Lock()
 ACTIVITY_NAMES_LOCK = asyncio.Lock()
@@ -185,42 +189,42 @@ async def insert_data_v2(batch: list[Message], error_queue: Queue):
 
     step 5 & 6 must be batched for all players at once
     """
-    # debugpy.breakpoint()
-    global \
-        SKILL_NAMES, \
-        ACTIVITY_NAMES, \
-        LAST_SKILL_NAMES_UPDATE, \
-        LAST_ACTIVITY_NAMES_UPDATE
-
     try:
         session: AsyncSession = await get_session()
 
-        # # Check and update the skill and activity caches
-        # if (
-        #     await check_and_update_skill_cache(batch, session) is None
-        #     or await check_and_update_activity_cache(batch, session) is None
-        # ):
-        #     return
+        # Step 1: Check for duplicates in scraper_data[player_id, record_date], remove all duplicates
+        for message in batch:
+            existing_data = await session.query(ScraperData).filter(
+                ScraperData.player_id == message.player_id,
+                ScraperData.record_date == message.record_date
+            ).first()
+            if existing_data:
+                session.delete(existing_data)
+                await session.commit()
 
-        batch_return = await transform_data(batch, session)
+        # Step 2: Start transaction
         async with session.begin():
-            for new_data in batch_return:
-                # insert into scraper_data table
-                scraper_data = new_data.scraper_data
+            for message in batch:
+                # Step 3: For each player insert into scraper_data
+                scraper_data = ScraperData(
+                    player_id=message.player_id,
+                    record_date=message.record_date
+                )
                 session.add(scraper_data)
+                await session.flush()
 
-                # insert into player_skills table
-                player_skills = new_data.player_skills
+                # Step 4: For each player get the scraper_id from scraper_data
+                scraper_id = scraper_data.scraper_id
+
+                # Step 5 & 6: Insert into player_skills and player_activities
+                # Assuming you have the skills and activities data in the message
+                player_skills = [PlayerSkill(scraper_id=scraper_id, skill_id=skill_id) for skill_id in message.skills]
+                player_activities = [PlayerActivity(scraper_id=scraper_id, activity_id=activity_id) for activity_id in message.activities]
+
                 session.bulk_save_objects(player_skills)
-
-                # insert into player_activities table
-                player_activities = new_data.player_activities
                 session.bulk_save_objects(player_activities)
 
-                # update Player table
-                player = new_data.player
-                session.merge(player)
-
+            # Commit the transaction
             await session.commit()
     except (OperationalError, IntegrityError) as e:
         for message in batch:
@@ -235,7 +239,6 @@ async def insert_data_v2(batch: list[Message], error_queue: Queue):
         logger.error({"error": e})
         logger.debug(f"Traceback: \n{traceback.format_exc()}")
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
-
 
 async def transform_data(
     old_data_list: list[Message], session: AsyncSession
@@ -324,16 +327,15 @@ async def transform_data(
         new_data_list.append(new_data)
 
     return new_data_list
-
-
+## todo: verify this is rigth
 async def update_skill_names(session: AsyncSession):
     global SKILL_NAMES, SKILL_NAMES_LOCK
 
     async with SKILL_NAMES_LOCK:
         if SKILL_NAMES is None:
-            skill_records = await session.execute(select(Skills))
+            skill_records = await session.execute(select(SkillsDB))
             SKILL_NAMES = [
-                playerSkillsSchema(**record) for record in skill_records.scalars().all()
+                SkillsDB(**record) for record in skill_records.scalars().all()
             ]
 
 
@@ -342,12 +344,11 @@ async def update_activity_names(session: AsyncSession):
 
     async with ACTIVITY_NAMES_LOCK:
         if ACTIVITY_NAMES is None:
-            activity_records = await session.execute(select(Activities))
+            activity_records = await session.execute(select(ActivitiesDB))
             ACTIVITY_NAMES = [
-                playerActivitiesSchema(**record)
+                ActivitiesDB(**record)
                 for record in activity_records.scalars().all()
             ]
-
 
 async def process_data(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
