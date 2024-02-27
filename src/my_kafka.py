@@ -2,6 +2,9 @@ import asyncio
 import json
 import logging
 from asyncio import Queue
+from main import Message
+from app.schemas.input.highscore import PlayerHiscoreData
+from app.schemas.input.player import Player
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from core.config import settings
@@ -24,7 +27,7 @@ async def kafka_consumer(topic: str, group: str):
 async def kafka_producer():
     producer = AIOKafkaProducer(
         bootstrap_servers=[settings.KAFKA_HOST],
-        value_serializer=lambda v: json.dumps(v).encode(),
+        value_serializer=lambda v: v.model_dump_json().encode() if isinstance(v, (Message, PlayerHiscoreData, Player)) else json.dumps(v).encode(),
         acks="all",
     )
     await producer.start()
