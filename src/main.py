@@ -14,7 +14,7 @@ from database.models.player import Player as PlayerDB
 from database.models.skills import PlayerSkills as PlayerSkillsDB, Skills as SkillsDB
 from database.models.activities import PlayerActivities as PlayerActivitiesDB, Activities as ActivitiesDB
 from pydantic import BaseModel
-from sqlalchemy import insert, update
+from sqlalchemy import insert, update, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Insert, Update
@@ -52,7 +52,6 @@ ACTIVITY_NAMES_LOCK = asyncio.Lock()
 # Global variable to track when the cache was last updated
 LAST_SKILL_NAMES_UPDATE = datetime.min
 LAST_ACTIVITY_NAMES_UPDATE = datetime.min
-
 
 def log_speed(
     counter: int, start_time: float, _queue: Queue, topic: str, interval: int = 15
@@ -118,84 +117,86 @@ async def insert_data_v1(batch: list[Message], error_queue: Queue):
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
 
-async def check_and_update_skill_cache(batch: list[Message], session: AsyncSession):
-    global SKILL_NAMES, LAST_SKILL_NAMES_UPDATE, SKILL_NAMES_LOCK, ACTIVITY_NAMES
+# async def check_and_update_skill_cache(batch: list[Message], session: AsyncSession):
+#     global SKILL_NAMES, LAST_SKILL_NAMES_UPDATE, SKILL_NAMES_LOCK, ACTIVITY_NAMES
 
-    # Query the cache to get the skill IDs
-    skill_ids = {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
+#     # Query the cache to get the skill IDs
+#     skill_ids = {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
 
-    missing_skills = [
-        skill
-        for message in batch
-        for skill in message.hiscores.model_fields.keys()
-        if skill
-        not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
-        and skill not in skill_ids
-    ]
-    if missing_skills:
-        # Check if the cache was updated less than 10 minutes ago
-        if datetime.now() - LAST_SKILL_NAMES_UPDATE < timedelta(minutes=10):
-            logger.warning(
-                "Skill names cache update was called less than 10 minutes ago. Skipping batch."
-            )
-            return None  # Or however you want to handle this case
+#     missing_skills = [
+#         skill
+#         for message in batch
+#         if message.hiscores is not None
+#         for skill in message.hiscores.model_fields.keys()
+#         if skill
+#         not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
+#         and skill not in skill_ids
+#     ]
+#     if missing_skills:
+#         # Check if the cache was updated less than 10 minutes ago
+#         if datetime.now() - LAST_SKILL_NAMES_UPDATE < timedelta(minutes=10):
+#             logger.warning(
+#                 "Skill names cache update was called less than 10 minutes ago. Skipping batch."
+#             )
+#             return None  # Or however you want to handle this case
 
-        # Update the skill names cache
-        async with SKILL_NAMES_LOCK:
-            await update_skill_names(session)
-        LAST_SKILL_NAMES_UPDATE = datetime.now()
+#         # Update the skill names cache
+#         async with SKILL_NAMES_LOCK:
+#             await update_skill_names(session)
+#         LAST_SKILL_NAMES_UPDATE = datetime.now()
 
-        # Query the cache again to get the updated skill IDs
-        skill_ids = (
-            {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
-        )
+#         # Query the cache again to get the updated skill IDs
+#         skill_ids = (
+#             {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
+#         )
 
-    return skill_ids
-
-
-async def check_and_update_activity_cache(batch: list[Message], session: AsyncSession):
-    global ACTIVITY_NAMES, LAST_ACTIVITY_NAMES_UPDATE, ACTIVITY_NAMES_LOCK, SKILL_NAMES
-
-    # Query the cache to get the activity IDs
-    activity_ids = (
-        {activity.name: activity.id for activity in ACTIVITY_NAMES}
-        if ACTIVITY_NAMES
-        else {}
-    )
-
-    # Check if any activity name in any message is not found in the cache
-    missing_activities = [
-        activity
-        for message in batch
-        for activity in message.hiscores.model_fields.keys()
-        if activity
-        not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
-        and activity not in activity_ids
-    ]
-    if missing_activities:
-        # Check if the cache was updated less than 10 minutes ago
-        if datetime.now() - LAST_ACTIVITY_NAMES_UPDATE < timedelta(minutes=10):
-            logger.warning(
-                "Activity names cache update was called less than 10 minutes ago. Skipping batch."
-            )
-            return None  # Or however you want to handle this case
-
-        # Update the activity names cache
-        async with ACTIVITY_NAMES_LOCK:
-            await update_activity_names(session)
-        LAST_ACTIVITY_NAMES_UPDATE = datetime.now()
-
-        # Query the cache again to get the updated activity IDs
-        activity_ids = (
-            {activity.name: activity.id for activity in ACTIVITY_NAMES}
-            if ACTIVITY_NAMES
-            else {}
-        )
-
-    return activity_ids
+#     return skill_ids
 
 
-async def insert_data_v2(batch: list[Message], error_queue: Queue):
+# async def check_and_update_activity_cache(batch: list[Message], session: AsyncSession):
+#     global ACTIVITY_NAMES, LAST_ACTIVITY_NAMES_UPDATE, ACTIVITY_NAMES_LOCK, SKILL_NAMES
+
+#     # Query the cache to get the activity IDs
+#     activity_ids = (
+#         {activity.name: activity.id for activity in ACTIVITY_NAMES}
+#         if ACTIVITY_NAMES
+#         else {}
+#     )
+
+#     # Check if any activity name in any message is not found in the cache
+#     missing_activities = [
+#         activity
+#         for message in batch
+#         if message.hiscores is not None
+#         for activity in message.hiscores.model_fields.keys()
+#         if activity
+#         not in ["timestamp", "Player_id"] + [skill.skill_name for skill in SKILL_NAMES]
+#         and activity not in activity_ids
+#     ]
+#     if missing_activities:
+#         # Check if the cache was updated less than 10 minutes ago
+#         if datetime.now() - LAST_ACTIVITY_NAMES_UPDATE < timedelta(minutes=10):
+#             logger.warning(
+#                 "Activity names cache update was called less than 10 minutes ago. Skipping batch."
+#             )
+#             return None  # Or however you want to handle this case
+
+#         # Update the activity names cache
+#         async with ACTIVITY_NAMES_LOCK:
+#             await update_activity_names(session)
+#         LAST_ACTIVITY_NAMES_UPDATE = datetime.now()
+
+#         # Query the cache again to get the updated activity IDs
+#         activity_ids = (
+#             {activity.name: activity.id for activity in ACTIVITY_NAMES}
+#             if ACTIVITY_NAMES
+#             else {}
+#         )
+
+#     return activity_ids
+
+
+async def insert_data_v2(batch: list[dict], error_queue: Queue):
     """
     1. check for duplicates in scraper_data[player_id, record_date], remove all duplicates
     2. start transaction
@@ -207,42 +208,11 @@ async def insert_data_v2(batch: list[Message], error_queue: Queue):
     step 5 & 6 must be batched for all players at once
     """
     try:
+        
+        messages = [Message(**msg) for msg in batch]
         session: AsyncSession = await get_session()
-
-        # Step 1: Check for duplicates in scraper_data[player_id, record_date], remove all duplicates
-        for message in batch:
-            existing_data = await session.query(ScraperData).filter(
-                ScraperData.player_id == message.player_id,
-                ScraperData.record_date == message.record_date
-            ).first()
-            if existing_data:
-                session.delete(existing_data)
-                await session.commit()
-
-        # Step 2: Start transaction
-        async with session.begin():
-            for message in batch:
-                # Step 3: For each player insert into scraper_data
-                scraper_data = ScraperData(
-                    player_id=message.player_id,
-                    record_date=message.record_date
-                )
-                session.add(scraper_data)
-                await session.flush()
-
-                # Step 4: For each player get the scraper_id from scraper_data
-                scraper_id = scraper_data.scraper_id
-
-                # Step 5 & 6: Insert into player_skills and player_activities
-                # Assuming you have the skills and activities data in the message
-                player_skills = [PlayerSkill(scraper_id=scraper_id, skill_id=skill_id) for skill_id in message.skills]
-                player_activities = [PlayerActivity(scraper_id=scraper_id, activity_id=activity_id) for activity_id in message.activities]
-
-                session.bulk_save_objects(player_skills)
-                session.bulk_save_objects(player_activities)
-
-            # Commit the transaction
-            await session.commit()
+        transformed_data: list[NewDataSchema] = await transform_data(messages, session)        
+        print(transformed_data)
     except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
@@ -265,15 +235,6 @@ async def transform_data(
     new_data_list = []
 
     for old_data in old_data_list:
-        # Query the cache to get the skill and activity IDs
-        skill_ids = (
-            {skill.name: skill.id for skill in SKILL_NAMES} if SKILL_NAMES else {}
-        )
-        activity_ids = (
-            {activity.name: activity.id for activity in ACTIVITY_NAMES}
-            if ACTIVITY_NAMES
-            else {}
-        )
 
         # Transform the old data format into the new format
         new_data = NewDataSchema(
@@ -296,8 +257,8 @@ async def transform_data(
                     [
                         {
                             "skill_id": (
-                                skill_ids[skill.name]
-                                if skill.name in skill_ids
+                                skill[skill.name]
+                                if skill.name in skill
                                 else None
                             ),
                             "skill_value": (
@@ -315,8 +276,8 @@ async def transform_data(
                     [
                         {
                             "activity_id": (
-                                activity_ids[activity.name]
-                                if activity.name in activity_ids
+                                activity[activity.name]
+                                if activity.name in activity
                                 else None
                             ),
                             "activity_value": (
@@ -349,23 +310,27 @@ async def update_skill_names(session: AsyncSession):
     global SKILL_NAMES, SKILL_NAMES_LOCK
 
     async with SKILL_NAMES_LOCK:
-        if SKILL_NAMES is None:
-            skill_records = await session.execute(select(SkillsDB))
-            SKILL_NAMES = [
-                SkillsDB(**record) for record in skill_records.scalars().all()
-            ]
+        if SKILL_NAMES is None or not SKILL_NAMES:
+            try:
+                skill_records = await session.execute(select(SkillsDB))
+                SKILL_NAMES = [Skills(**record.__dict__) for record in skill_records.scalars().all()]
+                print(SKILL_NAMES)
+            except Exception as e:
+                print(f"Error updating skill names: {e}")
 
 
 async def update_activity_names(session: AsyncSession):
     global ACTIVITY_NAMES, ACTIVITY_NAMES_LOCK
 
     async with ACTIVITY_NAMES_LOCK:
-        if ACTIVITY_NAMES is None:
-            activity_records = await session.execute(select(ActivitiesDB))
-            ACTIVITY_NAMES = [
-                ActivitiesDB(**record)
-                for record in activity_records.scalars().all()
-            ]
+        try:
+            if ACTIVITY_NAMES is None or not ACTIVITY_NAMES:
+                activity_records = await session.execute(select(ActivitiesDB))
+                ACTIVITY_NAMES = [Activities(**record.__dict__) for record in activity_records.scalars().all()]
+                print(ACTIVITY_NAMES) 
+        except Exception as e:
+            print(f"Error updating activity names: {e}")
+
 
 async def process_data_v1(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
@@ -425,7 +390,7 @@ async def process_data_v2(receive_queue: Queue, error_queue: Queue):
     # limit the number of async insert_data calls
     semaphore = asyncio.Semaphore(5)
 
-    batch: list[Message] = []
+    batch = []
     # Run indefinitely
     while True:
         start_time, counter = log_speed(
@@ -433,7 +398,7 @@ async def process_data_v2(receive_queue: Queue, error_queue: Queue):
             start_time=start_time,
             _queue=receive_queue,
             topic="scraper",
-            interval=15,
+            interval=15
         )
 
         # Check if queue is empty
@@ -442,32 +407,28 @@ async def process_data_v2(receive_queue: Queue, error_queue: Queue):
             continue
 
         # Get a message from the chosen queue
-        message: Message = Message(**message)
-
-        # TODO fix test data
+        message: dict = await receive_queue.get()
+        
+        #TODO fix test data
         if settings.ENV != "PRD":
-            continue_flag = False
+            player = message.get("player")
+            player_id = player.get("id")
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
-            # original
-
-            player = message.player
-            player_id = player.id  # Access the 'id' attribute directly
-            
             if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):
                 continue
-
+        
         # batch message
         batch.append(message)
 
         now = time.time()
 
         # insert data in batches of N or interval of N
-        if len(batch) > 100 or now - start_time > 15:
+        if len(batch) > 100 or now-start_time > 15:
             async with semaphore:
                 await insert_data_v2(batch=batch, error_queue=error_queue)
             batch = []
-
+        
         receive_queue.task_done()
         counter += 1
 
@@ -480,6 +441,8 @@ async def main():
     receive_queue = Queue(maxsize=100)
     send_queue = Queue(maxsize=100)
 
+
+
     asyncio.create_task(
         my_kafka.receive_messages(
             consumer=consumer, receive_queue=receive_queue, error_queue=send_queue
@@ -488,17 +451,25 @@ async def main():
     asyncio.create_task(
         my_kafka.send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
-    asyncio.create_task(
-        process_data_v1(receive_queue=receive_queue, error_queue=send_queue)
-    )
-
     # asyncio.create_task(
-    #     process_data_v2(receive_queue=receive_queue, error_queue=send_queue)
+    #     process_data_v1(receive_queue=receive_queue, error_queue=send_queue)
     # )
+
+    asyncio.create_task(
+        process_data_v2(receive_queue=receive_queue, error_queue=send_queue)
+    )
 
     while True:
         await asyncio.sleep(60)
 
+async def init():
+    session = await get_session()
+    try:
+        await update_skill_names(session)
+        await update_activity_names(session)
+    finally:
+        await session.close()
 
 if __name__ == "__main__":
+    asyncio.run(init())
     asyncio.run(main())
