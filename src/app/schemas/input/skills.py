@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict
-
+from typing import Optional
 
 class Skills(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -11,6 +11,6 @@ class Skills(BaseModel):
 class PlayerSkills(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    scraper_id: int
+    scraper_id: Optional[int] = None
     skill_id: int
     skill_value: int

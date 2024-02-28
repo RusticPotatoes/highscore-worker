@@ -6,6 +6,7 @@ import traceback
 from asyncio import Queue
 from datetime import datetime, timedelta
 
+import concurrent.futures
 
 from core.config import settings
 from database.database import get_session
@@ -13,6 +14,7 @@ from database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
 from database.models.player import Player as PlayerDB
 from database.models.skills import PlayerSkills as PlayerSkillsDB, Skills as SkillsDB
 from database.models.activities import PlayerActivities as PlayerActivitiesDB, Activities as ActivitiesDB
+from database.models.scraper_data import ScraperData as ScraperDataDB
 from pydantic import BaseModel
 from sqlalchemy import insert, update, select
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -52,6 +54,15 @@ ACTIVITY_NAMES_LOCK = asyncio.Lock()
 # Global variable to track when the cache was last updated
 LAST_SKILL_NAMES_UPDATE = datetime.min
 LAST_ACTIVITY_NAMES_UPDATE = datetime.min
+
+class SingletonLoop:
+    _loop = None
+
+    @classmethod
+    def get_loop(cls):
+        if cls._loop is None:
+            cls._loop = asyncio.get_running_loop()
+        return cls._loop
 
 def log_speed(
     counter: int, start_time: float, _queue: Queue, topic: str, interval: int = 15
@@ -197,6 +208,7 @@ async def insert_data_v1(batch: list[Message], error_queue: Queue):
 
 
 async def insert_data_v2(batch: list[dict], error_queue: Queue):
+    global SKILL_NAMES, ACTIVITY_NAMES
     """
     1. check for duplicates in scraper_data[player_id, record_date], remove all duplicates
     2. start transaction
@@ -210,13 +222,48 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
     try:
         
         messages = [Message(**msg) for msg in batch]
+        # session: AsyncSession = await get_session()
+        # transformed_data: list[NewDataSchema] = await transform_data(messages, session)     
+        new_data_list = []
+
+        # remove duplicates and remove players with no hiscores
+        messages = [msg for msg in messages if msg.hiscores is not None]
+        messages = [msg for msg in messages if msg.player is not None]    
+
+        start_time = time.time()
+        new_data_list = [transform_message_to_new_data(msg) for msg in messages]
+        end_time = time.time()
+        
         session: AsyncSession = await get_session()
-        transformed_data: list[NewDataSchema] = await transform_data(messages, session)        
-        print(transformed_data)
+        print(f"Time taken: {end_time - start_time} seconds")
+        # async with session.begin():
+        for new_data in new_data_list:
+            # Map ScraperData to ScraperDataDB
+            scraper_data_db = ScraperDataDB(**new_data.scraper_data.model_dump())
+            session.add(scraper_data_db)
+            await session.flush()  # Flush the session to get the ID of the newly inserted scraper_data_db
+
+            # Map Player to PlayerDB
+            player_db = PlayerDB(**new_data.player.model_dump())
+            session.add(player_db)
+
+            # Map each PlayerSkills to PlayerSkillsDB
+            for player_skill in new_data.player_skills:
+                player_skill_db = PlayerSkillsDB(scraper_id=scraper_data_db.scraper_id, **player_skill.model_dump())
+                session.add(player_skill_db)
+
+            # Map each PlayerActivities to PlayerActivitiesDB
+            for player_activity in new_data.player_activities:
+                player_activity_db = PlayerActivitiesDB(scraper_id=scraper_data_db.scraper_id, **player_activity.model_dump())
+                session.add(player_activity_db)
+
+        await session.commit()
+
     except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
 
+        logger.error({"error": e})
         logger.error({"error": e})
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
     except Exception as e:
@@ -227,85 +274,21 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
         logger.debug(f"Traceback: \n{traceback.format_exc()}")
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
-async def transform_data(
-    old_data_list: list[Message], session: AsyncSession
-) -> NewDataSchema:
-    global SKILL_NAMES, ACTIVITY_NAMES, LAST_CACHE_UPDATE
+def transform_message_to_new_data(msg):
+    scraper_data = ScraperData(player_id=msg.player.id)
 
-    new_data_list = []
+    # Create a set of the attribute names in msg.hiscores
+    hiscores_attributes = set(msg.hiscores.__dict__.keys())
 
-    for old_data in old_data_list:
+    # Only create PlayerSkills and PlayerActivities objects for skills and activities in hiscores_attributes
+    player_skills = [PlayerSkills(skill_id=skill.skill_id, skill_value=getattr(msg.hiscores, skill.skill_name)) for skill in SKILL_NAMES if skill.skill_name in hiscores_attributes]
+    player_activities = [PlayerActivities(activity_id=activity.activity_id, activity_value=getattr(msg.hiscores, activity.activity_name)) for activity in ACTIVITY_NAMES if activity.activity_name in hiscores_attributes]
 
-        # Transform the old data format into the new format
-        new_data = NewDataSchema(
-            **{
-                "scraper_data": {
-                    "scraper_id": old_data.player.id if old_data.player else None,
-                    "created_at": (
-                        old_data.hiscores.timestamp.isoformat()
-                        if old_data.hiscores
-                        else None
-                    ),
-                    "player_id": (
-                        old_data.hiscores.Player_id if old_data.hiscores else None
-                    ),
-                    "record_date": (
-                        datetime.utcnow().isoformat() if old_data.hiscores else None
-                    ),
-                },
-                "player_skills": (
-                    [
-                        {
-                            "skill_id": (
-                                skill[skill.name]
-                                if skill.name in skill
-                                else None
-                            ),
-                            "skill_value": (
-                                getattr(old_data.hiscores, skill.name, None)
-                                if old_data.hiscores
-                                else None
-                            ),
-                        }
-                        for skill in SKILL_NAMES
-                    ]
-                    if SKILL_NAMES
-                    else []
-                ),
-                "player_activities": (
-                    [
-                        {
-                            "activity_id": (
-                                activity[activity.name]
-                                if activity.name in activity
-                                else None
-                            ),
-                            "activity_value": (
-                                getattr(old_data.hiscores, activity.name, None)
-                                if old_data.hiscores
-                                else None
-                            ),
-                        }
-                        for activity in ACTIVITY_NAMES
-                    ]
-                    if ACTIVITY_NAMES
-                    else []
-                ),
-                "player": {
-                    "id": old_data.hiscores.Player_id if old_data.hiscores else None,
-                    "name": old_data.player.name if old_data.player else None,
-                    "normalized_name": (
-                        old_data.player.normalized_name if old_data.player else None
-                    ),
-                },
-            }
-        )
+    player = Player(**msg.player.model_dump())
+    new_data = NewDataSchema(scraper_data=scraper_data, player_skills=player_skills, player_activities=player_activities, player=player)
 
-        logger.debug(f"Transformed data: {new_data}")
-        new_data_list.append(new_data)
+    return new_data
 
-    return new_data_list
-## todo: verify this is rigth
 async def update_skill_names(session: AsyncSession):
     global SKILL_NAMES, SKILL_NAMES_LOCK
 
@@ -314,10 +297,9 @@ async def update_skill_names(session: AsyncSession):
             try:
                 skill_records = await session.execute(select(SkillsDB))
                 SKILL_NAMES = [Skills(**record.__dict__) for record in skill_records.scalars().all()]
-                print(SKILL_NAMES)
+                # print(SKILL_NAMES)
             except Exception as e:
                 print(f"Error updating skill names: {e}")
-
 
 async def update_activity_names(session: AsyncSession):
     global ACTIVITY_NAMES, ACTIVITY_NAMES_LOCK
@@ -327,10 +309,9 @@ async def update_activity_names(session: AsyncSession):
             if ACTIVITY_NAMES is None or not ACTIVITY_NAMES:
                 activity_records = await session.execute(select(ActivitiesDB))
                 ACTIVITY_NAMES = [Activities(**record.__dict__) for record in activity_records.scalars().all()]
-                print(ACTIVITY_NAMES) 
+                # print(ACTIVITY_NAMES) 
         except Exception as e:
             print(f"Error updating activity names: {e}")
-
 
 async def process_data_v1(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
@@ -426,7 +407,8 @@ async def process_data_v2(receive_queue: Queue, error_queue: Queue):
         # insert data in batches of N or interval of N
         if len(batch) > 100 or now-start_time > 15:
             async with semaphore:
-                await insert_data_v2(batch=batch, error_queue=error_queue)
+                task = asyncio.create_task(insert_data_v2(batch=batch, error_queue=error_queue))
+                await task
             batch = []
         
         receive_queue.task_done()
@@ -441,8 +423,6 @@ async def main():
     receive_queue = Queue(maxsize=100)
     send_queue = Queue(maxsize=100)
 
-
-
     asyncio.create_task(
         my_kafka.receive_messages(
             consumer=consumer, receive_queue=receive_queue, error_queue=send_queue
@@ -451,7 +431,7 @@ async def main():
     asyncio.create_task(
         my_kafka.send_messages(topic="scraper", producer=producer, send_queue=send_queue)
     )
-    # asyncio.create_task(
+    # loop.create_task(
     #     process_data_v1(receive_queue=receive_queue, error_queue=send_queue)
     # )
 
