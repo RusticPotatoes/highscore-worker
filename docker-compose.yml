@@ -62,6 +62,8 @@ services:
     volumes:
       - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       # - ./mysql/mount:/var/lib/mysql # creates persistence
+    ports:
+      - 3307:3306
     # ports:
     #   - 3306:3306
     expose:

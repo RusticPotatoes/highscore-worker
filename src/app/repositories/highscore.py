@@ -1,11 +1,11 @@
-from sqlalchemy import insert, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.repositories.abc import ABCRepo
 from app.schemas.input.highscore import PlayerHiscoreData
 from app.schemas.input.player import Player
+from database.database import SessionFactory
 from database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
 from database.models.player import Player as PlayerDB
+from sqlalchemy import insert, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class HighscoreRepo(ABCRepo):
@@ -29,7 +29,7 @@ class HighscoreRepo(ABCRepo):
         if id:
             sql = sql.where(table.id.in_(id))
 
-        async with self._get_session() as session:
+        async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             data = await session.execute(sql)
             data = await data.all()
@@ -49,8 +49,11 @@ class HighscoreRepo(ABCRepo):
         highscore_data = [d.model_dump() for d in highscore_data]
 
         sql_insert = insert(table_highscore).values(highscore_data)
+        sql_insert = sql_insert.prefix_with("IGNORE")
+
         sql_update = update(table_player)
-        async with self._get_session() as session:
+
+        async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             await session.execute(sql_insert)  # Insert highscore data
 
@@ -58,3 +61,10 @@ class HighscoreRepo(ABCRepo):
                 sql_update = sql_update.where(table_player.id == player.id)
                 sql_update = sql_update.values(player.model_dump())
                 await session.execute(sql_update)  # Update player data
+            await session.commit()
+
+    async def update(self, id, data):
+        return await super().update(id, data)
+
+    async def delete(self, id):
+        return await super().delete(id)

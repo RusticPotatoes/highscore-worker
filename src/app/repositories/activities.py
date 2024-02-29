@@ -29,7 +29,7 @@ class ActivitiesRepo(ABCRepo):
         if activity_id:
             sql = sql.where(table.activity_id == activity_id)
 
-        async with self._get_session() as session:
+        async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             data = await session.execute(sql)
             data = await data.all()
@@ -53,6 +53,6 @@ class PlayerActivitiesRepo(ABCRepo):
         table = PlayerActivitiesDB
         sql = insert(table).values(data)
 
-        async with self._get_session() as session:
+        async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             await session.execute(sql)

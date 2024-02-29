@@ -9,6 +9,10 @@ up:
 down:
 	docker-compose down
 
+docker-restart:
+	docker compose down
+	docker compose up --build -d
+
 clean:
 	docker-compose down --volumes
 

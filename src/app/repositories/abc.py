@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from database.database import get_session
+from database.database import SessionFactory
 
 
 class ABCRepo(ABC):
@@ -9,7 +9,7 @@ class ABCRepo(ABC):
     """
 
     async def _get_session(self):
-        return await get_session()
+        return SessionFactory()
 
     @abstractmethod
     async def create(self, data):
