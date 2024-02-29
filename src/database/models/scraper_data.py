@@ -7,7 +7,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.mysql import BIGINT, SMALLINT
 from sqlalchemy.schema import UniqueConstraint
-
+from datetime import datetime
+from typing import Optional
 
 # CREATE TABLE scraper_data (
 #   scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -22,8 +23,12 @@ class ScraperData(Base):
     scraper_id = Column(BIGINT, primary_key=True, autoincrement=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     player_id = Column(SMALLINT, nullable=False)
-    record_date = Column(Date, nullable=True, server_onupdate=func.current_date())
+    # record_date = Column(Date, nullable=True, server_onupdate=func.current_date())
 
-    __table_args__ = (
-        UniqueConstraint("player_id", "record_date", name="unique_player_per_day"),
-    )
+    # __table_args__ = (
+    #     UniqueConstraint("player_id", "record_date", name="unique_player_per_day"),
+    # )
+
+    # __table_args__ = (
+    #     UniqueConstraint("player_id", "record_date", name="unique_player_per_day"),
+    # )

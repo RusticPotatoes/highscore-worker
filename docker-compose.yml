@@ -14,6 +14,9 @@ services:
     expose:
       - 9094
       - 9092
+    ports:
+      - 9092:9092
+      - 9094:9094
     healthcheck:
       test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
       interval: 30s
@@ -22,21 +25,21 @@ services:
     networks:
       - botdetector-network
 
-  kafdrop:
-    container_name: kafdrop
-    image: obsidiandynamics/kafdrop:latest
-    environment:
-      - KAFKA_BROKERCONNECT=kafka:9092
-      - JVM_OPTS=-Xms32M -Xmx64M
-      - SERVER_SERVLET_CONTEXTPATH=/
-    ports:
-      - 9999:9000
-    restart: on-failure
-    networks:
-      - botdetector-network
-    depends_on:
-      kafka:
-        condition: service_healthy
+  # kafdrop:
+  #   container_name: kafdrop
+  #   image: obsidiandynamics/kafdrop:latest
+  #   environment:
+  #     - KAFKA_BROKERCONNECT=kafka:9092
+  #     - JVM_OPTS=-Xms32M -Xmx64M
+  #     - SERVER_SERVLET_CONTEXTPATH=/
+  #   ports:
+  #     - 9999:9000
+  #   restart: on-failure
+  #   networks:
+  #     - botdetector-network
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
 
   kafka_setup:
     container_name: kafka_setup
