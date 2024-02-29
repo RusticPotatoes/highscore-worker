@@ -20,6 +20,7 @@ from sqlalchemy import insert, update, select
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.expression import Insert, Update
+from database.database import SessionContextManager
 
 import my_kafka as my_kafka
 # schemas import
@@ -34,6 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 class Message(BaseModel):
+    def __hash__(self):
+        return hash((self.player.id, self.hiscores, self.player))
+
     hiscores: PlayerHiscoreData | None
     player: Player | None
 
@@ -227,6 +231,7 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
         new_data_list = []
 
         # remove duplicates and remove players with no hiscores
+        # messages = list(set(messages))
         messages = [msg for msg in messages if msg.hiscores is not None]
         messages = [msg for msg in messages if msg.player is not None]    
 
@@ -234,30 +239,43 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
         new_data_list = [transform_message_to_new_data(msg) for msg in messages]
         end_time = time.time()
         
-        session: AsyncSession = await get_session()
+        # session: AsyncSession = await get_session()
         print(f"Time taken: {end_time - start_time} seconds")
         # async with session.begin():
-        for new_data in new_data_list:
-            # Map ScraperData to ScraperDataDB
-            scraper_data_db = ScraperDataDB(**new_data.scraper_data.model_dump())
-            session.add(scraper_data_db)
-            await session.flush()  # Flush the session to get the ID of the newly inserted scraper_data_db
+        async with SessionContextManager() as session:
+            for new_data in new_data_list:
+                # Map ScraperData to ScraperDataDB
+                scraper_data_db = ScraperDataDB(
+                    **new_data.scraper_data.model_dump()
+                )
+                session.add(scraper_data_db)
+                await session.flush()  # Flush the session to get the ID of the newly inserted scraper_data_db
 
-            # Map Player to PlayerDB
-            player_db = PlayerDB(**new_data.player.model_dump())
-            session.add(player_db)
+                # Map Player to PlayerDB
+                stmt = select(PlayerDB).where(PlayerDB.id == new_data.player.id)
+                result = await session.execute(stmt)
+                player_db = result.scalars().first()
 
-            # Map each PlayerSkills to PlayerSkillsDB
-            for player_skill in new_data.player_skills:
-                player_skill_db = PlayerSkillsDB(scraper_id=scraper_data_db.scraper_id, **player_skill.model_dump())
-                session.add(player_skill_db)
+                if player_db is None:
+                    player_db = PlayerDB(**new_data.player.model_dump())
+                    session.add(player_db)
+                else:
+                    for key, value in new_data.player.model_dump().items():
+                        setattr(player_db, key, value)
 
-            # Map each PlayerActivities to PlayerActivitiesDB
-            for player_activity in new_data.player_activities:
-                player_activity_db = PlayerActivitiesDB(scraper_id=scraper_data_db.scraper_id, **player_activity.model_dump())
-                session.add(player_activity_db)
+                for player_skill in new_data.player_skills:
+                    player_skill_dict = player_skill.model_dump()
+                    player_skill_dict.pop('scraper_id', None)
+                    player_skill_db = PlayerSkillsDB(scraper_id=scraper_data_db.scraper_id, **player_skill_dict)
+                    session.add(player_skill_db)
 
-        await session.commit()
+                for player_activity in new_data.player_activities:
+                    player_activity_dict = player_activity.model_dump()
+                    player_activity_dict.pop('scraper_id', None)
+                    player_activity_db = PlayerActivitiesDB(scraper_id=scraper_data_db.scraper_id, **player_activity_dict)
+                    session.add(player_activity_db)
+
+            await session.commit()
 
     except (OperationalError, IntegrityError) as e:
         for message in batch:
@@ -407,8 +425,7 @@ async def process_data_v2(receive_queue: Queue, error_queue: Queue):
         # insert data in batches of N or interval of N
         if len(batch) > 100 or now-start_time > 15:
             async with semaphore:
-                task = asyncio.create_task(insert_data_v2(batch=batch, error_queue=error_queue))
-                await task
+                await insert_data_v2(batch=batch, error_queue=error_queue)
             batch = []
         
         receive_queue.task_done()

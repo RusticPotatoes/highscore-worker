@@ -20,7 +20,7 @@ class Skills(Base):
     skill_id = Column(TINYINT, primary_key=True, autoincrement=True)
     skill_name = Column(String(50), nullable=False)
 
-    __table_args__ = (UniqueConstraint("skill_name", name="unique_skill_name"),)
+    # __table_args__ = (UniqueConstraint("skill_name", name="unique_skill_name"),)
 
 
 # CREATE TABLE player_skills (

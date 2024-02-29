@@ -20,7 +20,7 @@ class Activities(Base):
     activity_id = Column(TINYINT, primary_key=True, autoincrement=True)
     activity_name = Column(String(50), nullable=False)
 
-    __table_args__ = (UniqueConstraint("activity_name", name="unique_activity_name"),)
+    # __table_args__ = (UniqueConstraint("activity_name", name="unique_activity_name"),)
 
 
 # CREATE TABLE player_activities (

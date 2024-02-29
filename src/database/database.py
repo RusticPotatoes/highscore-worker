@@ -4,6 +4,14 @@ from sqlalchemy.orm import sessionmaker
 
 from core.config import settings
 
+class SessionContextManager:
+    async def __aenter__(self):
+        self.session = await get_session()
+        return self.session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.session.close()
+
 # Create an async SQLAlchemy engine
 engine = create_async_engine(
     settings.DATABASE_URL,
