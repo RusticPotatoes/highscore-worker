@@ -4,7 +4,7 @@ import os
 import zipfile
 from queue import Queue
 
-from my_kafka import KafkaProducer
+from kafka import KafkaProducer
 from kafka.admin import KafkaAdminClient, NewTopic
 
 
