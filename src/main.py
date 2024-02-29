@@ -243,6 +243,9 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
         print(f"Time taken: {end_time - start_time} seconds")
         # async with session.begin():
         async with SessionContextManager() as session:
+            player_skills_dbs = []
+            player_activities_dbs = []
+
             for new_data in new_data_list:
                 # Map ScraperData to ScraperDataDB
                 scraper_data_db = ScraperDataDB(
@@ -267,13 +270,16 @@ async def insert_data_v2(batch: list[dict], error_queue: Queue):
                     player_skill_dict = player_skill.model_dump()
                     player_skill_dict.pop('scraper_id', None)
                     player_skill_db = PlayerSkillsDB(scraper_id=scraper_data_db.scraper_id, **player_skill_dict)
-                    session.add(player_skill_db)
+                    player_skills_dbs.append(player_skill_db)
 
                 for player_activity in new_data.player_activities:
                     player_activity_dict = player_activity.model_dump()
                     player_activity_dict.pop('scraper_id', None)
                     player_activity_db = PlayerActivitiesDB(scraper_id=scraper_data_db.scraper_id, **player_activity_dict)
-                    session.add(player_activity_db)
+                    player_activities_dbs.append(player_activity_db)
+
+            session.add_all(player_skills_dbs)
+            session.add_all(player_activities_dbs)
 
             await session.commit()
 
