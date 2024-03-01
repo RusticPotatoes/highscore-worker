@@ -1,7 +1,6 @@
 from app.repositories.abc import ABCRepo
 from app.schemas.input.highscore import PlayerHiscoreData
 from app.schemas.input.player import Player
-from database.database import SessionFactory
 from database.models.highscores import PlayerHiscoreData as PlayerHiscoreDataDB
 from database.models.player import Player as PlayerDB
 from sqlalchemy import insert, select, update

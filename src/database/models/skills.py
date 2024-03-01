@@ -6,7 +6,6 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.dialects.mysql import BIGINT, TINYINT
-from sqlalchemy.schema import UniqueConstraint
 
 
 # CREATE TABLE skills (

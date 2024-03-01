@@ -1,5 +1,3 @@
-from datetime import datetime
-from typing import Optional
 
 from database.database import Base
 from sqlalchemy import (
@@ -9,7 +7,6 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.mysql import BIGINT, SMALLINT
-from sqlalchemy.schema import UniqueConstraint
 
 
 # CREATE TABLE scraper_data (

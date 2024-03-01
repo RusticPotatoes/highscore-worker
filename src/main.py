@@ -11,13 +11,7 @@ from app.repositories.highscore import HighscoreRepo
 from app.repositories.scraper_data import ScraperDataRepo
 from app.schemas.input.message import Message
 from core.config import settings
-from database.database import get_session
-from database.models.activities import PlayerActivities as PlayerActivitiesDB
-from database.models.player import Player as PlayerDB
-from database.models.scraper_data import ScraperData as ScraperDataDB
-from database.models.skills import PlayerSkills as PlayerSkillsDB
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
