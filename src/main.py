@@ -8,6 +8,7 @@ import my_kafka as my_kafka
 
 # schemas import
 from app.repositories.highscore import HighscoreRepo
+from app.repositories.scraper_data import ScraperDataRepo
 from app.schemas.input.message import Message
 from core.config import settings
 from database.database import get_session
@@ -54,6 +55,30 @@ async def insert_data_v1(batch: list[Message], error_queue: Queue):
         logger.info(f"Received: {len(players)=}, {len(highscores)=}")
 
         repo = HighscoreRepo()
+        await repo.create(highscore_data=highscores, player_data=players)
+    except (OperationalError, IntegrityError) as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+    except Exception as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.debug(f"Traceback: \n{traceback.format_exc()}")
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+
+
+async def insert_data_v2(batch: list[Message], error_queue: Queue):
+    try:
+        highscores = [msg.hiscores for msg in batch if msg.hiscores]
+        players = [msg.player for msg in batch if msg.player]
+
+        logger.info(f"Received: {len(players)=}, {len(highscores)=}")
+
+        repo = ScraperDataRepo()
         await repo.create(highscore_data=highscores, player_data=players)
     except (OperationalError, IntegrityError) as e:
         for message in batch:
