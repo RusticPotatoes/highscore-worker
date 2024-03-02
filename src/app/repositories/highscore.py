@@ -14,26 +14,6 @@ class HighscoreRepo(ABCRepo):
         """Initializes the HighscoreRepo instance."""
         super().__init__()
 
-    async def request(self, id: list[int] = None) -> list[PlayerHiscoreDataDB]:
-        """Retrieves highscore data from the database.
-
-        Args:
-            id: Optional list of highscore IDs to filter by.
-
-        Returns:
-            A list of PlayerHiscoreDataDB objects representing the retrieved highscores.
-        """
-        table = PlayerHiscoreDataDB
-        sql = select(table)
-        if id:
-            sql = sql.where(table.id.in_(id))
-
-        async with await self._get_session() as session:
-            session: AsyncSession  # Type annotation for clarity
-            data = await session.execute(sql)
-            data = await data.all()
-        return data
-
     async def create(
         self, highscore_data: list[PlayerHiscoreData], player_data: list[Player]
     ) -> None:
@@ -61,6 +41,26 @@ class HighscoreRepo(ABCRepo):
                 sql_update = sql_update.values(player.model_dump())
                 await session.execute(sql_update)  # Update player data
             await session.commit()
+
+    async def request(self, id: list[int] = None) -> list[PlayerHiscoreDataDB]:
+        """Retrieves highscore data from the database.
+
+        Args:
+            id: Optional list of highscore IDs to filter by.
+
+        Returns:
+            A list of PlayerHiscoreDataDB objects representing the retrieved highscores.
+        """
+        table = PlayerHiscoreDataDB
+        sql = select(table)
+        if id:
+            sql = sql.where(table.id.in_(id))
+
+        async with await self._get_session() as session:
+            session: AsyncSession  # Type annotation for clarity
+            data = await session.execute(sql)
+            data = await data.all()
+        return data
 
     async def update(self, id, data):
         return await super().update(id, data)

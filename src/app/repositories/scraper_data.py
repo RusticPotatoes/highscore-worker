@@ -1,14 +1,18 @@
-from datetime import datetime
+import logging
 
+from app.repositories.abc import ABCRepo
+from app.schemas.input.activities import PlayerActivities
+from app.schemas.input.player import Player
+from app.schemas.input.skills import PlayerSkills
 from app.schemas.scraper_data import ScraperCreate, ScraperData
-from sqlalchemy import and_, insert, select
+from database.models.activities import PlayerActivities as PlayerActivitiesDB
+from database.models.player import Player as PlayerDB
+from database.models.scraper_data import ScraperData as ScraperDataDB
+from database.models.skills import PlayerSkills as PlayerSkillsDB
+from sqlalchemy import and_, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.app.repositories.abc import ABCRepo
-from src.app.repositories.activities import PlayerActivities
-from src.app.repositories.skills import PlayerSkills
-from src.app.schemas.input.highscore import PlayerHiscoreData
-from src.database.models.scraper_data import ScraperData as ScraperDataDB
+logger = logging.getLogger(__name__)
 
 
 class ScraperDataRepo(ABCRepo):
@@ -18,83 +22,65 @@ class ScraperDataRepo(ABCRepo):
         """Initializes the SkillsRepo instance."""
         super().__init__()
 
-    async def request(self, scraper_id: int = None) -> list[ScraperData]:
-        """ """
-        table = ScraperDataDB
-        sql = select(table)
-        sql = sql.where(ScraperDataDB.scraper_id == scraper_id)
-
-        async with await self._get_session() as session:
-            session: AsyncSession
-            data = await session.execute(sql)
-            data = await data.all()
-        return [ScraperData(**d) for d in data]
+    async def request(self, id):
+        return await super().request(id)
 
     async def create(
-        self, highscore_data: list[PlayerHiscoreData], player_data: list
+        self,
+        highscore_data: list[
+            tuple[list[PlayerSkills], list[PlayerActivities], ScraperCreate]
+        ],
+        player_data: list[Player],
     ) -> None:
-        repo_skills = PlayerSkills()
-        repo_activities = PlayerActivities()
-
-        date_fmt = "%Y-%m-%d %HH:%MM:%SS"
-        data = [
-            {
-                "record": ScraperCreate(
-                    player_id=d.Player_id,
-                    created_at=datetime.strptime(d.timestamp, date_fmt),
-                ),
-                "highscore": d.model_dump(),
-            }
-            for d in highscore_data
-        ]
-
         table = ScraperDataDB
-
-        sql_insert = insert(table)
-        sql_insert = sql_insert.values([d["record"].model_dump() for d in data])
-        sql_insert = sql_insert.prefix_with("IGNORE")
-
-        sql_select = select(table)
-        sql_insert = sql_select.where
 
         async with await self._get_session() as session:
             session: AsyncSession
-            # insert scraperdata
-            await session.execute(sql_insert)
-
-            # get scraper_id
-            for d in data:
-                _d: ScraperCreate = d["record"]
-                date = datetime.fromisoformat(_d.created_at).date()
-                sql_select = select(table)
-                sql_select = sql_select.where(
-                    and_(table.player_id == _d.player_id, table.record_date == date)
+            skills = []
+            activities = []
+            for data in highscore_data:
+                # insert scraperdata
+                await session.execute(
+                    insert(table).values(data[2].model_dump()).prefix_with("ignore")
                 )
-                result = await session.execute(sql_select)
-                result = result.first()
-                scraper_id = ""  # TODO from result
-                SKILLS = []  # hardcoded
-                ACTIVITIES = []  # hardcoded
+                scraper_record = await session.execute(
+                    select(table).where(
+                        and_(
+                            table.player_id == data[2].player_id,
+                            table.record_date == data[2].created_at.date(),
+                        )
+                    )
+                )
+                scraper_record = scraper_record.scalars()
+                scraper_record = [ScraperData(**s.__dict__) for s in scraper_record]
+                assert len(scraper_record) == 1
+                scraper_record = scraper_record[0]
 
-                d["skills"] = [
-                    {
-                        "name": s,
-                        "skill_value": d["highscore"].get(s),
-                        "scraper_id": scraper_id,
-                    }
-                    for s in SKILLS
-                ]
-                d["activities"] = [
-                    {
-                        "name": a,
-                        "activity_value": d["highscore"].get(a),
-                        "scraper_id": scraper_id,
-                    }
-                    for a in ACTIVITIES
-                ]
-                d.pop("highscore")  # cleanup memory
-            # TODO: bulk insert values with repo skills & activities
-            # REPO skills & activities must convert skill/activity_name to id
-            # REPO skills & activities must take a pydantic class so we should convert above to class name:str, skill/activity_value:int, scraper_id:int
+                for d in data[0]:
+                    d.scraper_id = scraper_record.scraper_id
+                    skills.append(d.model_dump())
+                for d in data[1]:
+                    d.scraper_id = scraper_record.scraper_id
+                    activities.append(d.model_dump())
+
+            await session.execute(
+                insert(PlayerActivitiesDB).values(activities).prefix_with("ignore")
+            )
+            await session.execute(
+                insert(PlayerSkillsDB).values(skills).prefix_with("ignore")
+            )
+
+            for player in player_data:
+                await session.execute(
+                    update(PlayerDB)
+                    .values(player.model_dump())
+                    .where(PlayerDB.id == player.id)
+                )
             await session.commit()
-        return data
+        return None
+
+    async def update(self, id, data):
+        return await super().update(id, data)
+
+    async def delete(self, id):
+        return await super().delete(id)

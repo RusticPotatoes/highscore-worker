@@ -1,10 +1,9 @@
+from app.repositories.abc import ABCRepo
+from app.schemas.input.activities import Activities, PlayerActivities
+from database.models.activities import Activities as ActivitiesDB
+from database.models.activities import PlayerActivities as PlayerActivitiesDB
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from src.app.repositories.abc import ABCRepo
-from src.app.schemas.input.activities import PlayerActivities
-from src.database.models.activities import Activities as ActivitiesDB
-from src.database.models.activities import PlayerActivities as PlayerActivitiesDB
 
 
 class ActivitiesRepo(ABCRepo):
@@ -14,7 +13,10 @@ class ActivitiesRepo(ABCRepo):
         """Initializes the ActivitiesRepo instance."""
         super().__init__()
 
-    async def request(self, activity_id: int = None) -> list[ActivitiesDB]:
+    async def create(self, data):
+        return await super().create(data)
+
+    async def request(self, activity_id: int = None) -> list[Activities]:
         """Retrieves activity data from the database.
 
         Args:
@@ -32,8 +34,14 @@ class ActivitiesRepo(ABCRepo):
         async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             data = await session.execute(sql)
-            data = await data.all()
-        return data
+            data = data.scalars()
+        return [Activities(**d.__dict__) for d in data]
+
+    async def update(self, id, data):
+        return await super().update(id, data)
+
+    async def delete(self, id):
+        return await super().delete(id)
 
 
 class PlayerActivitiesRepo(ABCRepo):
@@ -56,3 +64,12 @@ class PlayerActivitiesRepo(ABCRepo):
         async with await self._get_session() as session:
             session: AsyncSession  # Type annotation for clarity
             await session.execute(sql)
+
+    async def request(self, id):
+        return await super().request(id)
+
+    async def update(self, id, data):
+        return await super().update(id, data)
+
+    async def delete(self, id):
+        return await super().delete(id)
