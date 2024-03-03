@@ -128,8 +128,8 @@ CREATE TRIGGER `hiscore_date_OnInsert` BEFORE INSERT ON `playerHiscoreData` FOR 
 CREATE TABLE scraper_data (
   scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  player_id SMALLINT UNSIGNED NOT NULL,
   record_date DATE AS (DATE(created_at)) STORED,
+  player_id INT UNSIGNED NOT NULL,
   UNIQUE KEY unique_player_per_day (player_id, record_date)
 );
 
