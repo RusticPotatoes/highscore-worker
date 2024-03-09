@@ -3,6 +3,7 @@ import logging
 import time
 import traceback
 from asyncio import Queue
+from functools import wraps
 
 import my_kafka as my_kafka
 from app.repositories.activities import ActivitiesRepo
@@ -19,6 +20,20 @@ from core.config import settings
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 logger = logging.getLogger(__name__)
+
+
+def async_timeit(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = await func(*args, **kwargs)
+        end_time = time.time()
+        logger.debug(
+            f"Execution time for {func.__name__}: {end_time - start_time} seconds"
+        )
+        return result
+
+    return wrapper
 
 
 def log_speed(
@@ -46,6 +61,7 @@ def log_speed(
     return time.time(), 0
 
 
+@async_timeit
 async def insert_data_v1(batch: list[Message], error_queue: Queue):
     try:
         highscores = [msg.hiscores for msg in batch if msg.hiscores]
@@ -70,6 +86,7 @@ async def insert_data_v1(batch: list[Message], error_queue: Queue):
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
 
 
+@async_timeit
 async def insert_data_v2(batch: list[Message], error_queue: Queue):
     try:
         highscores = [msg.hiscores for msg in batch if msg.hiscores]
