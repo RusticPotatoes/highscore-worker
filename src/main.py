@@ -113,7 +113,7 @@ async def insert_data_v2(batch: list[Message], error_queue: Queue):
             )
             _highscore = highscore.model_dump()
             assert isinstance(_highscore, dict)
-            logger.info(_highscore)
+            # logger.info(_highscore)
             for k, v in _highscore.items():
                 if k in skills.keys():
                     skill = skills.get(k)
@@ -134,7 +134,7 @@ async def insert_data_v2(batch: list[Message], error_queue: Queue):
                         )
                     )
             highscore_data.append((player_skills, player_activities, scraper_data))
-            logger.info(f"{highscore_data[0]}, {players[0]}")
+            # logger.info(f"{highscore_data[0]}, {players[0]}")
         await scraper_repo.create(highscore_data=highscore_data, player_data=players)
     except (OperationalError, IntegrityError) as e:
         for message in batch:
