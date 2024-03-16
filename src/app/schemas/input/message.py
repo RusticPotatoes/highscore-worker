@@ -4,5 +4,5 @@ from pydantic import BaseModel
 
 
 class Message(BaseModel):
-    hiscores: PlayerHiscoreData | None
-    player: Player | None
+    hiscores: PlayerHiscoreData | None = None
+    player: Player
