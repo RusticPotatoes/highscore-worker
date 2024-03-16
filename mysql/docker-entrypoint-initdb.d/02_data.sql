@@ -55,7 +55,7 @@ SET
 ;
 
 INSERT INTO skills (skill_name) VALUES 
-	('total'), 
+	-- ('total'), 
 	('attack'), 
 	('defence'), 
 	('strength'), 
