@@ -15,7 +15,7 @@ services:
       - 9094
       - 9092
     ports:
-      - 9092:9092
+      # - 9092:9092
       - 9094:9094
     healthcheck:
       test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
@@ -51,6 +51,8 @@ services:
       - KAFKA_BROKER=kafka:9092
     networks:
       - botdetector-network
+    # ports:
+    #   - 9092:9092
     depends_on:
       kafka:
         condition: service_healthy
@@ -66,9 +68,7 @@ services:
       - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
       # - ./mysql/mount:/var/lib/mysql # creates persistence
     ports:
-      - 3307:3306
-    # ports:
-    #   - 3306:3306
+      - 3306:3306
     expose:
       - 3306
     networks:
@@ -80,37 +80,37 @@ services:
       start_period: 30s
       timeout: 5s
 
-  worker:
-    container_name: worker
-    image: bot-detector/highscore_worker
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: base
-      args:
-        root_path: /
-        api_port: 5000
-        INSTALL_PTVSD: true
-    # command: bash -c "apt update && apt install -y curl && sleep infinity"
-    command: python src/main.py
-    # ports:
-    #   - 5678:5678
-    environment:
-      - KAFKA_HOST=kafka:9092
-      - DATABASE_URL=mysql+aiomysql://root:root_bot_buster@mysql:3306/playerdata
-      - POOL_TIMEOUT=30
-      - POOL_RECYCLE=30
-      # - ENABLE_DEBUGPY=true
-      # - PYDEVD_DISABLE_FILE_VALIDATION=1
-    networks:
-      - botdetector-network
-    volumes:
-      - ./src:/project/src
-    depends_on:
-      kafka:
-        condition: service_healthy
-      mysql:
-        condition: service_healthy
+  # worker:
+  #   container_name: worker
+  #   image: bot-detector/highscore_worker
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: base
+  #     args:
+  #       root_path: /
+  #       api_port: 5000
+  #      # INSTALL_PTVSD: true
+  #   # command: bash -c "apt update && apt install -y curl && sleep infinity"
+  #   command: python src/main.py
+  #   # ports:
+  #   #   - 5678:5678
+  #   environment:
+  #     - KAFKA_HOST=kafka:9092
+  #     - DATABASE_URL=mysql+aiomysql://root:root_bot_buster@mysql:3306/playerdata
+  #     - POOL_TIMEOUT=30
+  #     - POOL_RECYCLE=30
+  #     # - ENABLE_DEBUGPY=true
+  #     # - PYDEVD_DISABLE_FILE_VALIDATION=1
+  #   networks:
+  #     - botdetector-network
+  #   volumes:
+  #     - ./src:/project/src
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     mysql:
+  #       condition: service_healthy
 
 networks:
   botdetector-network:

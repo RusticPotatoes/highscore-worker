@@ -124,3 +124,41 @@ CREATE TABLE `playerHiscoreData` (
   CONSTRAINT `FK_Players_id` FOREIGN KEY (`Player_id`) REFERENCES `Players` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 );
 CREATE TRIGGER `hiscore_date_OnInsert` BEFORE INSERT ON `playerHiscoreData` FOR EACH ROW SET new.ts_date = DATE(new.timestamp);
+
+CREATE TABLE scraper_data (
+  scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  record_date DATE AS (DATE(created_at)) STORED,
+  player_id INT UNSIGNED NOT NULL,
+  UNIQUE KEY unique_player_per_day (player_id, record_date)
+);
+
+CREATE TABLE skills (
+  skill_id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, # < 255
+  skill_name VARCHAR(50) NOT NULL,
+  UNIQUE KEY unique_skill_name (skill_name)
+);
+CREATE TABLE activities (
+  activity_id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, # < 255
+  activity_name VARCHAR(50) NOT NULL,
+  UNIQUE KEY unique_activity_name (activity_name)
+);
+
+
+CREATE TABLE player_skills (
+  scraper_id BIGINT UNSIGNED NOT NULL,
+  skill_id TINYINT UNSIGNED NOT NULL,
+  skill_value INT UNSIGNED NOT NULL DEFAULT 0, # < 200 000 000
+  FOREIGN KEY (scraper_id) REFERENCES scraper_data(scraper_id) ON DELETE CASCADE,
+  FOREIGN KEY (skill_id) REFERENCES skills(skill_id) ON DELETE CASCADE,
+  PRIMARY KEY (scraper_id, skill_id)
+);
+
+CREATE TABLE player_activities (
+  scraper_id BIGINT UNSIGNED NOT NULL,
+  activity_id TINYINT UNSIGNED NOT NULL,
+  activity_value INT UNSIGNED NOT NULL DEFAULT 0, # some guy could get over 65k kc
+  FOREIGN KEY (scraper_id) REFERENCES scraper_data(scraper_id) ON DELETE CASCADE,
+  FOREIGN KEY (activity_id) REFERENCES activities(activity_id) ON DELETE CASCADE,
+  PRIMARY KEY (scraper_id, activity_id)
+);

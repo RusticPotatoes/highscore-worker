@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "compose-up",
+            "type": "shell",
+            "command": "docker-compose down --volumes && docker-compose up --build -d",
+            "isBackground": true,
+        },
+        {
+            "label": "compose-up-dev",
+            "type": "shell",
+            "command": "docker-compose -f docker-compose-dev.yml down --volumes && docker-compose -f docker-compose-dev.yml up --build -d",
+            "isBackground": true,
+        }
+    ]
+}

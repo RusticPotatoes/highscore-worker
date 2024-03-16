@@ -1,65 +1,40 @@
 import asyncio
-import json
 import logging
 import time
 import traceback
 from asyncio import Queue
+from functools import wraps
 
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
-from app.schemas.highscores import playerHiscoreData as playerHiscoreDataSchema
+import my_kafka as my_kafka
+from app.repositories.activities import ActivitiesRepo
+
+# schemas import
+from app.repositories.highscore import HighscoreRepo
+from app.repositories.scraper_data import ScraperDataRepo
+from app.repositories.skills import SkillsRepo
+from app.schemas.input.activities import Activities, PlayerActivities
+from app.schemas.input.message import Message
+from app.schemas.input.skills import PlayerSkills, Skills
+from app.schemas.scraper_data import ScraperCreate
 from core.config import settings
-from database.database import get_session
-from database.models.highscores import PlayerHiscoreData
-from database.models.player import Player
-from sqlalchemy import insert, update
 from sqlalchemy.exc import IntegrityError, OperationalError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.expression import Insert, Update
 
 logger = logging.getLogger(__name__)
 
 
-async def kafka_consumer(topic: str, group: str):
-    consumer = AIOKafkaConsumer(
-        topic,
-        bootstrap_servers=[settings.KAFKA_HOST],
-        group_id=group,
-        value_deserializer=lambda x: json.loads(x.decode("utf-8")),
-        auto_offset_reset="earliest",
-    )
-    await consumer.start()
-    return consumer
+def async_timeit(func):
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = await func(*args, **kwargs)
+        end_time = time.time()
+        logger.debug(
+            f"Execution time for {func.__name__}: {end_time - start_time} seconds"
+        )
+        return result
 
+    return wrapper
 
-async def kafka_producer():
-    producer = AIOKafkaProducer(
-        bootstrap_servers=[settings.KAFKA_HOST],
-        value_serializer=lambda v: json.dumps(v).encode(),
-        acks="all",
-    )
-    await producer.start()
-    return producer
-
-
-async def receive_messages(
-    consumer: AIOKafkaConsumer, receive_queue: Queue, error_queue: Queue
-):
-    async for message in consumer:
-        if error_queue.qsize() > 100:
-            await asyncio.sleep(1)
-            continue
-        value = message.value
-        await receive_queue.put(value)
-
-
-async def send_messages(topic: str, producer: AIOKafkaProducer, send_queue: Queue):
-    while True:
-        if send_queue.empty():
-            await asyncio.sleep(1)
-            continue
-        message = await send_queue.get()
-        await producer.send(topic, value=message)
-        send_queue.task_done()
 
 def log_speed(
     counter: int, start_time: float, _queue: Queue, topic: str, interval: int = 15
@@ -85,31 +60,17 @@ def log_speed(
     # Return the current time and reset the counter to zero
     return time.time(), 0
 
-async def insert_data(batch: list[dict], error_queue:Queue):
+
+@async_timeit
+async def insert_data_v1(batch: list[Message], error_queue: Queue):
     try:
-        highscores:list[dict] = [msg.get("hiscores") for msg in batch]
-        players:list[dict] = [msg.get("player") for msg in batch]
+        highscores = [msg.hiscores for msg in batch if msg.hiscores]
+        players = [msg.player for msg in batch if msg.player]
 
-        highscores = [playerHiscoreDataSchema(**hs) for hs in highscores if hs]
-        highscores = [hs.model_dump(mode="json") for hs in highscores ]
-
-        session: AsyncSession = await get_session()
-        
         logger.info(f"Received: {len(players)=}, {len(highscores)=}")
 
-        # start a transaction
-        async with session.begin():
-            # insert into table values ()
-            insert_sql:Insert = insert(PlayerHiscoreData)
-            insert_sql = insert_sql.values(highscores)
-            insert_sql = insert_sql.prefix_with("ignore")
-            await session.execute(insert_sql)
-            # update table
-            for player in players:
-                update_sql:Update = update(Player)
-                update_sql = update_sql.where(Player.id == player.get("id"))
-                update_sql = update_sql.values(player)
-                await session.execute(update_sql)
+        repo = HighscoreRepo()
+        await repo.create(highscore_data=highscores, player_data=players)
     except (OperationalError, IntegrityError) as e:
         for message in batch:
             await error_queue.put(message)
@@ -123,6 +84,72 @@ async def insert_data(batch: list[dict], error_queue:Queue):
         logger.error({"error": e})
         logger.debug(f"Traceback: \n{traceback.format_exc()}")
         logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+
+
+@async_timeit
+async def insert_data_v2(batch: list[Message], error_queue: Queue):
+    try:
+        highscores = [msg.hiscores for msg in batch if msg.hiscores]
+        players = [msg.player for msg in batch if msg.player]
+
+        logger.info(f"Received: {len(players)=}, {len(highscores)=}")
+
+        scraper_repo = ScraperDataRepo()
+
+        skills_repo = SkillsRepo()
+        activities_repo = ActivitiesRepo()
+
+        skills = {s.skill_name: s for s in await skills_repo.request()}
+
+        activities = {a.activity_name: a for a in await activities_repo.request()}
+
+        highscore_data = []
+        scraper_data = []
+        for highscore in highscores:
+            player_skills: list[PlayerSkills] = []
+            player_activities: list[PlayerActivities] = []
+            scraper_data = ScraperCreate(
+                player_id=highscore.Player_id, created_at=highscore.timestamp
+            )
+            _highscore = highscore.model_dump()
+            assert isinstance(_highscore, dict)
+            # logger.info(_highscore)
+            for k, v in _highscore.items():
+                if k in skills.keys():
+                    skill = skills.get(k)
+                    assert isinstance(skill, Skills)
+                    player_skills.append(
+                        PlayerSkills(
+                            scraper_id=None, skill_id=skill.skill_id, skill_value=v
+                        )
+                    )
+                if k in activities.keys():
+                    activity = activities.get(k)
+                    assert isinstance(activity, Activities)
+                    player_activities.append(
+                        PlayerActivities(
+                            scraper_id=None,
+                            activity_id=activity.activity_id,
+                            activity_value=v,
+                        )
+                    )
+            highscore_data.append((player_skills, player_activities, scraper_data))
+            # logger.info(f"{highscore_data[0]}, {players[0]}")
+        await scraper_repo.create(highscore_data=highscore_data, player_data=players)
+    except (OperationalError, IntegrityError) as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+    except Exception as e:
+        for message in batch:
+            await error_queue.put(message)
+
+        logger.error({"error": e})
+        logger.debug(f"Traceback: \n{traceback.format_exc()}")
+        logger.info(f"error_qsize={error_queue.qsize()}, {message=}")
+
 
 async def process_data(receive_queue: Queue, error_queue: Queue):
     # Initialize counter and start time
@@ -140,7 +167,7 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             start_time=start_time,
             _queue=receive_queue,
             topic="scraper",
-            interval=15
+            interval=15,
         )
 
         # Check if queue is empty
@@ -149,46 +176,50 @@ async def process_data(receive_queue: Queue, error_queue: Queue):
             continue
 
         # Get a message from the chosen queue
-        message: dict = await receive_queue.get()
-        
-        #TODO fix test data
+        message = await receive_queue.get()
+        message = Message(**message)
+
+        # TODO fix test data
         if settings.ENV != "PRD":
-            player = message.get("player")
-            player_id = player.get("id")
+            player_id = message.player.id
             MIN_PLAYER_ID = 0
             MAX_PLAYER_ID = 300
             if not (MIN_PLAYER_ID < player_id <= MAX_PLAYER_ID):
                 continue
-        
+
         # batch message
         batch.append(message)
 
         now = time.time()
 
         # insert data in batches of N or interval of N
-        if len(batch) > 100 or now-start_time > 15:
+        if len(batch) > 100 or now - start_time > 15:
             async with semaphore:
-                await insert_data(batch=batch, error_queue=error_queue)
+                await insert_data_v1(batch=batch, error_queue=error_queue)
+                await insert_data_v2(batch=batch, error_queue=error_queue)
             batch = []
-        
+
         receive_queue.task_done()
         counter += 1
 
+
 async def main():
     # get kafka engine
-    consumer = await kafka_consumer(topic="scraper", group="highscore-worker")
-    producer = await kafka_producer()
+    consumer = await my_kafka.kafka_consumer(topic="scraper", group="highscore-worker")
+    producer = await my_kafka.kafka_producer()
 
     receive_queue = Queue(maxsize=100)
     send_queue = Queue(maxsize=100)
 
     asyncio.create_task(
-        receive_messages(
+        my_kafka.receive_messages(
             consumer=consumer, receive_queue=receive_queue, error_queue=send_queue
         )
     )
     asyncio.create_task(
-        send_messages(topic="scraper", producer=producer, send_queue=send_queue)
+        my_kafka.send_messages(
+            topic="scraper", producer=producer, send_queue=send_queue
+        )
     )
     asyncio.create_task(
         process_data(receive_queue=receive_queue, error_queue=send_queue)

@@ -1,16 +1,22 @@
-from sqlalchemy import BigInteger, Column, Date, DateTime, Integer, func
-
 from database.database import Base
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Integer,
+    func,
+)
+from sqlalchemy.dialects.mysql import BIGINT
 
 
 class PlayerHiscoreData(Base):
     __tablename__ = "playerHiscoreData"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(BIGINT, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, server_default=func.now())
     ts_date = Column(Date, nullable=True)
     Player_id = Column(Integer, nullable=False)
-    total = Column(BigInteger, default=0)
+    total = Column(BIGINT, default=0)
     attack = Column(Integer, default=0)
     defence = Column(Integer, default=0)
     strength = Column(Integer, default=0)
