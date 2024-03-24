@@ -125,13 +125,24 @@ CREATE TABLE `playerHiscoreData` (
 );
 CREATE TRIGGER `hiscore_date_OnInsert` BEFORE INSERT ON `playerHiscoreData` FOR EACH ROW SET new.ts_date = DATE(new.timestamp);
 
-CREATE TABLE scraper_data (
-  scraper_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  record_date DATE AS (DATE(created_at)) STORED,
-  player_id INT UNSIGNED NOT NULL,
-  UNIQUE KEY unique_player_per_day (player_id, record_date)
-);
+CREATE TABLE `scraper_data` (
+  `scraper_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `player_id` int unsigned NOT NULL,
+  `record_date` date GENERATED ALWAYS AS (cast(`created_at` as date)) STORED,
+  PRIMARY KEY (`scraper_id`),
+  UNIQUE KEY `unique_player_per_day` (`player_id`,`record_date`)
+)
+
+CREATE TABLE `scraper_data_latest` (
+  `scraper_id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `record_date` date GENERATED ALWAYS AS (cast(`created_at` as date)) STORED,
+  `player_id` int unsigned NOT NULL,
+  PRIMARY KEY (`player_id`),
+  KEY `idx_scraper_id` (`scraper_id`),
+  KEY `idx_record_date` (`record_date`)
+)
 
 CREATE TABLE skills (
   skill_id TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, # < 255
