@@ -58,10 +58,12 @@ class ScraperDataRepo(ABCRepo):
 
                 for d in data[0]:
                     d.scraper_id = scraper_record.scraper_id
-                    skills.append(d.model_dump())
+                    if d.skill_value > 0:
+                        skills.append(d.model_dump())
                 for d in data[1]:
                     d.scraper_id = scraper_record.scraper_id
-                    activities.append(d.model_dump())
+                    if d.activity_value > 0:
+                        activities.append(d.model_dump())
 
             await session.execute(
                 insert(PlayerActivitiesDB).values(activities).prefix_with("ignore")
